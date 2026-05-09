@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual envs
+venv/
+.venv/
+!venv/PLACEHOLDER.md
+
+# Outputs
+outputs/*
+!outputs/.gitkeep
+chart_exports/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# OS
+.DS_Store

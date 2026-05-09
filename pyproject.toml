@@ -1,0 +1,14 @@
+[project]
+name = "kuhn-poker-escher-experiments"
+version = "0.1.0"
+description = "Kuhn poker ESCHER experiments for neural CFR thesis work"
+requires-python = ">=3.10"
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "smoke: end-to-end smoke tests",
+]
