@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import csv
 from datetime import datetime
+import gc
 import json
 from pathlib import Path
 import pickle
+import time
 from typing import Any, Dict, Iterable, List, Optional
 
 import numpy as np
 from scipy import stats
+import tensorflow as tf
 
 import pyspiel
 from open_spiel.python import policy
@@ -21,14 +24,19 @@ from .seeding import set_seed_tf
 from .solver import ESCHERSolver
 
 
-def make_escher_solver(game, config: Dict[str, Any]) -> ESCHERSolver:
+def make_escher_solver(
+    game,
+    config: Dict[str, Any],
+    *,
+    num_iterations: Optional[int] = None,
+) -> ESCHERSolver:
     """Construct an ``ESCHERSolver`` from a plain experiment config dict."""
     return ESCHERSolver(
         game,
         policy_network_layers=tuple(config["policy_network_layers"]),
         regret_network_layers=tuple(config["regret_network_layers"]),
         value_network_layers=tuple(config["value_network_layers"]),
-        num_iterations=int(config["num_iterations"]),
+        num_iterations=int(config["num_iterations"] if num_iterations is None else num_iterations),
         num_traversals=int(config["num_traversals"]),
         num_val_fn_traversals=int(config["num_val_fn_traversals"]),
         learning_rate=float(config["learning_rate"]),
@@ -47,6 +55,15 @@ def make_escher_solver(game, config: Dict[str, Any]) -> ESCHERSolver:
         train_device=config["train_device"],
         infer_device=config["infer_device"],
         verbose=bool(config["verbose"]),
+        expl=float(config.get("expl", 1.0)),
+        val_expl=float(config.get("val_expl", 0.01)),
+        importance_sampling=bool(config.get("importance_sampling", True)),
+        importance_sampling_threshold=float(
+            config.get("importance_sampling_threshold", 100.0)
+        ),
+        clear_value_buffer=bool(config.get("clear_value_buffer", True)),
+        val_bootstrap=bool(config.get("val_bootstrap", False)),
+        all_actions=bool(config.get("all_actions", True)),
     )
 
 
@@ -76,12 +93,62 @@ def json_safe(value: Any) -> Any:
     return value
 
 
-def first_nodes_to_threshold(nodes: Iterable[float], metric: Iterable[float], threshold: float) -> float:
+def to_float(value: Any) -> float:
+    """Convert TensorFlow/NumPy scalar-like values to ``float`` when possible."""
+    if value is None:
+        return np.nan
+    try:
+        return float(value.numpy())
+    except Exception:
+        try:
+            return float(np.asarray(value))
+        except Exception:
+            return np.nan
+
+
+def safe_array(values: Iterable[Any]) -> np.ndarray:
+    """Return a float64 NumPy array, including for empty metric lists."""
+    return np.asarray(values, dtype=np.float64)
+
+
+def auc(x: Iterable[float], y: Iterable[float]) -> float:
+    """Trapezoidal area under ``y`` with respect to ``x`` over finite points."""
+    x_arr = safe_array(x)
+    y_arr = safe_array(y)
+    finite = np.isfinite(x_arr) & np.isfinite(y_arr)
+    if np.count_nonzero(finite) < 2:
+        return np.nan
+    return float(np.trapz(y_arr[finite], x_arr[finite]))
+
+
+def normalised_auc(x: Iterable[float], y: Iterable[float]) -> float:
+    """Area under curve divided by the finite span of ``x``."""
+    x_arr = safe_array(x)
+    y_arr = safe_array(y)
+    finite = np.isfinite(x_arr) & np.isfinite(y_arr)
+    if np.count_nonzero(finite) < 2:
+        return np.nan
+    x_finite = x_arr[finite]
+    span = float(np.max(x_finite) - np.min(x_finite))
+    if span <= 0:
+        return np.nan
+    return float(np.trapz(y_arr[finite], x_finite) / span)
+
+
+def first_nodes_to_threshold(
+    nodes: Iterable[float],
+    metric: Iterable[float],
+    threshold: float,
+) -> float:
     idx = np.where(np.asarray(metric) <= threshold)[0]
     return np.nan if len(idx) == 0 else float(np.asarray(nodes)[idx[0]])
 
 
-def first_time_to_threshold(times: Iterable[float], metric: Iterable[float], threshold: float) -> float:
+def first_time_to_threshold(
+    times: Iterable[float],
+    metric: Iterable[float],
+    threshold: float,
+) -> float:
     idx = np.where(np.asarray(metric) <= threshold)[0]
     return np.nan if len(idx) == 0 else float(np.asarray(times)[idx[0]])
 
@@ -106,13 +173,24 @@ def safe_stats(values: Iterable[float]) -> Dict[str, float | int]:
     }
 
 
-def run_single_seed(seed: int, config: Dict[str, Any], export_dir: Optional[str | Path] = None) -> Dict[str, Any]:
+def run_single_seed(
+    seed: int,
+    config: Dict[str, Any],
+    export_dir: Optional[str | Path] = None,
+) -> Dict[str, Any]:
     """Run one ESCHER seed and return curves plus a compact summary."""
     set_seed_tf(seed)
     game = pyspiel.load_game(config["game_name"])
     solver = make_escher_solver(game, config)
 
-    _regret_losses, _policy_loss, convs, nodes_touched, avg_policy_values, diagnostics = solver.solve()
+    (
+        _regret_losses,
+        _policy_loss,
+        convs,
+        nodes_touched,
+        avg_policy_values,
+        diagnostics,
+    ) = solver.solve()
 
     exploitability_curve = np.asarray(convs, dtype=np.float64) / 2.0
     nodes_touched = np.asarray(nodes_touched, dtype=np.float64)
@@ -172,6 +250,200 @@ def run_single_seed(seed: int, config: Dict[str, Any], export_dir: Optional[str 
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
         with open(checkpoint_dir / f"seed_{seed}_final_model.pkl", "wb") as f:
             pickle.dump(solver.extract_full_model(), f)
+
+    return result
+
+
+def evaluate_final_policy(game, solver: ESCHERSolver) -> Dict[str, float]:
+    """Evaluate the solver's current playable average-policy network."""
+    final_policy = policy.tabular_policy_from_callable(game, solver.action_probabilities)
+    final_nash_conv = exploitability.nash_conv(game, final_policy)
+    final_policy_values = expected_game_score.policy_value(
+        game.new_initial_state(), [final_policy] * game.num_players()
+    )
+    return {
+        "final_nash_conv_recomputed": float(final_nash_conv),
+        "final_exploitability": float(final_nash_conv / 2.0),
+        "final_policy_value": float(final_policy_values[0]),
+        "final_policy_value_error": float(abs(final_policy_values[0] - KUHN_GAME_VALUE_PLAYER_0)),
+    }
+
+
+def run_single_seed_variant(
+    seed: int,
+    config: Dict[str, Any],
+    export_dir: Optional[str | Path] = None,
+) -> Dict[str, Any]:
+    """Run one seed for a named experiment variant.
+
+    This runner is intended for ablations where final policy quality is always
+    measured, but intermediate exploitability checkpoints may be disabled.
+    """
+    set_seed_tf(seed)
+    game = pyspiel.load_game(config["game_name"])
+    solver = make_escher_solver(game, config)
+
+    start = time.time()
+    (
+        _regret_losses,
+        policy_loss,
+        convs,
+        nodes_touched,
+        avg_policy_values,
+        diagnostics,
+    ) = solver.solve()
+    elapsed = time.time() - start
+
+    final_eval = evaluate_final_policy(game, solver)
+
+    convs = safe_array(convs)
+    nodes_touched = safe_array(nodes_touched)
+    avg_policy_values = safe_array(avg_policy_values)
+    intermediate_exploitability = convs / 2.0 if convs.size else np.asarray([], dtype=np.float64)
+    intermediate_value_error = (
+        np.abs(avg_policy_values - KUHN_GAME_VALUE_PLAYER_0)
+        if avg_policy_values.size
+        else np.asarray([], dtype=np.float64)
+    )
+    diagnostics = {k: np.asarray(v) for k, v in diagnostics.items()}
+
+    iterations = diagnostics.get("iteration", np.asarray([], dtype=int)).astype(int)
+    wall_clock = diagnostics.get(
+        "wall_clock_seconds",
+        np.asarray([], dtype=np.float64),
+    ).astype(float)
+    final_nodes = float(nodes_touched[-1]) if nodes_touched.size else float(solver.get_num_nodes())
+    final_wall_clock = float(wall_clock[-1]) if wall_clock.size else float(elapsed)
+
+    summary = {
+        "variant_id": config["variant_id"],
+        "variant_label": config["variant_label"],
+        "seed": int(seed),
+        "compute_intermediate_exploitability": bool(config["compute_exploitability"]),
+        "check_exploitability_every": int(config["check_exploitability_every"]),
+        "policy_network_train_steps_per_event": int(config["policy_network_train_steps"]),
+        "intermediate_policy_training_events_expected": int(
+            config["intermediate_policy_training_events_expected"]
+        ),
+        "final_policy_training_events_expected": int(
+            config["final_policy_training_events_expected"]
+        ),
+        "total_policy_training_events_expected": int(
+            config["total_policy_training_events_expected"]
+        ),
+        "policy_gradient_steps_expected": int(config["policy_gradient_steps_expected"]),
+        "elapsed_seconds": float(elapsed),
+        "num_intermediate_points": int(intermediate_exploitability.size),
+        "intermediate_final_exploitability": (
+            float(intermediate_exploitability[-1]) if intermediate_exploitability.size else np.nan
+        ),
+        "intermediate_best_exploitability": (
+            float(np.min(intermediate_exploitability))
+            if intermediate_exploitability.size
+            else np.nan
+        ),
+        "intermediate_final_window_mean_exploitability": final_window_mean(
+            intermediate_exploitability
+        ),
+        "intermediate_exploitability_auc_nodes": auc(nodes_touched, intermediate_exploitability),
+        "intermediate_exploitability_normalised_auc_nodes": normalised_auc(
+            nodes_touched, intermediate_exploitability
+        ),
+        "nodes_to_intermediate_exploitability_threshold": first_nodes_to_threshold(
+            nodes_touched, intermediate_exploitability, config["exploitability_threshold"]
+        ),
+        "seconds_to_intermediate_exploitability_threshold": first_time_to_threshold(
+            wall_clock, intermediate_exploitability, config["exploitability_threshold"]
+        ),
+        "final_nodes_touched": final_nodes,
+        "final_wall_clock_seconds": final_wall_clock,
+        "final_policy_loss": to_float(policy_loss),
+        **final_eval,
+    }
+
+    for key in [
+        "policy_loss",
+        "value_loss",
+        "value_test_loss",
+        "regret_loss_player_0",
+        "regret_loss_player_1",
+        "average_policy_buffer_size",
+        "regret_buffer_size_player_0",
+        "regret_buffer_size_player_1",
+        "value_buffer_size",
+        "value_test_buffer_size",
+    ]:
+        if key in diagnostics and len(diagnostics[key]):
+            value = diagnostics[key][-1]
+            summary[f"last_intermediate_{key}"] = (
+                float(value) if np.issubdtype(np.asarray(value).dtype, np.number) else value
+            )
+        else:
+            summary[f"last_intermediate_{key}"] = np.nan
+
+    curve_rows = []
+    if intermediate_exploitability.size:
+        for idx, (iteration, node_count, wall_time, expl, value, value_err) in enumerate(
+            zip(
+                iterations,
+                nodes_touched,
+                wall_clock,
+                intermediate_exploitability,
+                avg_policy_values,
+                intermediate_value_error,
+            )
+        ):
+            row = {
+                "variant_id": config["variant_id"],
+                "variant_label": config["variant_label"],
+                "seed": int(seed),
+                "checkpoint_index": int(idx),
+                "iteration": int(iteration),
+                "nodes_touched": float(node_count),
+                "wall_clock_seconds": float(wall_time),
+                "exploitability": float(expl),
+                "average_policy_value": float(value),
+                "policy_value_error": float(value_err),
+                "is_final_policy_evaluation": False,
+            }
+            for key, arr in diagnostics.items():
+                if len(arr) > idx:
+                    row[key] = to_float(arr[idx])
+            curve_rows.append(row)
+
+    curve_rows.append({
+        "variant_id": config["variant_id"],
+        "variant_label": config["variant_label"],
+        "seed": int(seed),
+        "checkpoint_index": int(len(curve_rows)),
+        "iteration": int(config["num_iterations"]),
+        "nodes_touched": final_nodes,
+        "wall_clock_seconds": final_wall_clock,
+        "exploitability": float(final_eval["final_exploitability"]),
+        "average_policy_value": float(final_eval["final_policy_value"]),
+        "policy_value_error": float(final_eval["final_policy_value_error"]),
+        "is_final_policy_evaluation": True,
+    })
+
+    result = {
+        "seed": int(seed),
+        "variant_id": config["variant_id"],
+        "summary": summary,
+        "curves": curve_rows,
+    }
+
+    if bool(config.get("save_final_checkpoints", False)) and export_dir is not None:
+        checkpoint_dir = Path(export_dir) / "checkpoints" / config["variant_id"]
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        with open(checkpoint_dir / f"seed_{seed}_final_model.pkl", "wb") as f:
+            pickle.dump(solver.extract_full_model(), f)
+
+    del solver
+    gc.collect()
+    try:
+        tf.keras.backend.clear_session()
+    except Exception:
+        pass
 
     return result
 

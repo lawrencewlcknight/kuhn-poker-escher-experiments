@@ -187,13 +187,17 @@ class ESCHERSolver(policy.Policy):
         self._regret_train_step = []
         for player in range(self._num_players):
             with tf.device(self._infer_device):
-                self._regret_networks.append(
-                    RegretNetwork(self._embedding_size, self._regret_network_layers,
-                                  self._num_actions))
+                regret_network = RegretNetwork(
+                    self._embedding_size, self._regret_network_layers,
+                    self._num_actions)
+                self._build_network_once(regret_network, self._embedding_size)
+                self._regret_networks.append(regret_network)
             with tf.device(self._train_device):
-                self._regret_networks_train.append(
-                    RegretNetwork(self._embedding_size,
-                                  self._regret_network_layers, self._num_actions))
+                regret_network_train = RegretNetwork(
+                    self._embedding_size,
+                    self._regret_network_layers, self._num_actions)
+                self._build_network_once(regret_network_train, self._embedding_size)
+                self._regret_networks_train.append(regret_network_train)
                 self._loss_regrets.append(tf.keras.losses.MeanSquaredError())
                 self._optimizer_regrets.append(
                     tf.keras.optimizers.Adam(learning_rate=learning_rate))
@@ -204,6 +208,8 @@ class ESCHERSolver(policy.Policy):
         # Initialize value networks, losses, optimizers
         self._val_network = ValueNetwork(self._value_embedding_size, self._value_network_layers)
         self._val_network_train = ValueNetwork(self._value_embedding_size, self._value_network_layers)
+        self._build_network_once(self._val_network, self._value_embedding_size)
+        self._build_network_once(self._val_network_train, self._value_embedding_size)
         self._loss_value = tf.keras.losses.MeanSquaredError()
         self._optimizer_value = tf.keras.optimizers.Adam(learning_rate=learning_rate)
         self._value_train_step = self._get_value_train_graph()
@@ -216,6 +222,7 @@ class ESCHERSolver(policy.Policy):
             self._policy_network = PolicyNetwork(self._embedding_size,
                                                  self._policy_network_layers,
                                                  self._num_actions)
+            self._build_network_once(self._policy_network, self._embedding_size)
             self._optimizer_policy = tf.keras.optimizers.Adam(
                 learning_rate=self._learning_rate)
             self._loss_policy = tf.keras.losses.MeanSquaredError()
@@ -226,6 +233,10 @@ class ESCHERSolver(policy.Policy):
             self._regret_networks_train[player] = RegretNetwork(
                 self._embedding_size, self._regret_network_layers,
                 self._num_actions)
+            self._build_network_once(
+                self._regret_networks_train[player],
+                self._embedding_size,
+            )
             self._optimizer_regrets[player] = tf.keras.optimizers.Adam(
                 learning_rate=self._learning_rate)
             self._regret_train_step[player] = (
@@ -245,9 +256,19 @@ class ESCHERSolver(policy.Policy):
         with tf.device(self._train_device):
             self._val_network_train = ValueNetwork(
                 self._value_embedding_size, self._value_network_layers)
+            self._build_network_once(
+                self._val_network_train,
+                self._value_embedding_size,
+            )
             self._optimizer_value = tf.keras.optimizers.Adam(
                 learning_rate=self._learning_rate)
             self._value_train_step = (self._get_value_train_graph())
+
+    def _build_network_once(self, model, input_size):
+        """Create Keras variables before the network enters a tf.function."""
+        dummy_x = tf.zeros((1, input_size), dtype=tf.float32)
+        dummy_mask = tf.ones((1, self._num_actions), dtype=tf.float32)
+        model((dummy_x, dummy_mask), training=False)
 
     @property
     def regret_buffers(self):

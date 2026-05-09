@@ -51,10 +51,69 @@ python -m experiments.kuhn_poker.escher_multiseed_baseline.run \
 
 The run should produce a timestamped output directory containing CSV summaries, JSON metadata, and PNG plots. The smoke-test results should not be interpreted as evidence about ESCHER performance.
 
+Run a tiny one-seed intermediate policy-training ablation:
+
+```bash
+python -m experiments.kuhn_poker.escher_intermediate_policy_training_ablation.run \
+  --seeds 1234 \
+  --iterations 10 \
+  --traversals 50 \
+  --value-traversals 50 \
+  --policy-network-train-steps 20 \
+  --regret-network-train-steps 20 \
+  --value-network-train-steps 20 \
+  --evaluation-interval 1 \
+  --output-root outputs/smoke_tests
+```
+
+This should produce the common output files plus variant and paired-difference summaries.
+
+Run a tiny one-seed checkpoint-stability experiment:
+
+```bash
+python -m experiments.kuhn_poker.escher_checkpoint_stability.run \
+  --seeds 1234 \
+  --checkpoint-schedule 1,2 \
+  --traversals 50 \
+  --value-traversals 50 \
+  --policy-network-train-steps 20 \
+  --regret-network-train-steps 20 \
+  --value-network-train-steps 20 \
+  --evaluation-interval 1 \
+  --output-root outputs/smoke_tests
+```
+
+This should produce checkpoint summaries, policy snapshots, exact head-to-head matrices, and PNG plots.
+
+Run a tiny constrained hyperparameter-search experiment:
+
+```bash
+python -m experiments.kuhn_poker.escher_constrained_hyperparameter_search.run \
+  --screening-seeds 1234 \
+  --confirmation-seeds 1234 \
+  --screening-iterations 2 \
+  --confirmation-iterations 2 \
+  --screening-evaluation-interval 1 \
+  --confirmation-evaluation-interval 1 \
+  --n-random-candidates 1 \
+  --confirmation-top-k 1 \
+  --traversals 50 \
+  --value-traversals 50 \
+  --policy-network-train-steps 20 \
+  --regret-network-train-steps 20 \
+  --value-network-train-steps 20 \
+  --output-root outputs/smoke_tests
+```
+
+This should produce screening, confirmation, paired-difference, curve, and plot outputs.
+
 ## 5. Full experiment run
 
 ```bash
 python -m experiments.kuhn_poker.escher_multiseed_baseline.run
+python -m experiments.kuhn_poker.escher_intermediate_policy_training_ablation.run
+python -m experiments.kuhn_poker.escher_checkpoint_stability.run
+python -m experiments.kuhn_poker.escher_constrained_hyperparameter_search.run
 ```
 
 The full run uses the default 10 seeds and the aligned ESCHER baseline configuration. This may take a long time.
