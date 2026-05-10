@@ -37,7 +37,35 @@ The repository is organised so that each experiment can be run independently whi
 │       │   ├── config.py
 │       │   ├── run.py
 │       │   └── README.md
-│       └── escher_constrained_hyperparameter_search/  # Experiment 4
+│       ├── escher_constrained_hyperparameter_search/  # Experiment 4
+│       │   ├── config.py
+│       │   ├── run.py
+│       │   └── README.md
+│       ├── escher_warm_start_fair_ablation/           # Experiment 5
+│       │   ├── config.py
+│       │   ├── run.py
+│       │   └── README.md
+│       ├── escher_lr_schedule_ablation/               # Experiment 6
+│       │   ├── config.py
+│       │   ├── run.py
+│       │   └── README.md
+│       ├── escher_reach_weighting_ablation/           # Experiment 7
+│       │   ├── config.py
+│       │   ├── run.py
+│       │   └── README.md
+│       ├── escher_reuse_value_trajectory_ablation/    # Experiment 8
+│       │   ├── config.py
+│       │   ├── run.py
+│       │   └── README.md
+│       ├── escher_disk_backed_regret_memory_ablation/ # Experiment 9
+│       │   ├── config.py
+│       │   ├── run.py
+│       │   └── README.md
+│       ├── escher_on_policy_joint_regret_ablation/   # Experiment 10
+│       │   ├── config.py
+│       │   ├── run.py
+│       │   └── README.md
+│       └── escher_solver_parameter_random_search/    # Experiment 11
 │           ├── config.py
 │           ├── run.py
 │           └── README.md
@@ -90,6 +118,62 @@ Runs a bounded search around the ESCHER baseline configuration to test whether p
 
 **Question:** can a constrained change to ESCHER hyperparameters produce reliably lower exploitability than the thesis baseline?
 
+### 5. ESCHER warm-start fair ablation
+
+[`experiments/kuhn_poker/escher_warm_start_fair_ablation/`](experiments/kuhn_poker/escher_warm_start_fair_ablation/README.md)
+
+Runs paired continuous and checkpoint/resume ESCHER arms to test whether interrupting training, saving the full solver state, loading it into a fresh solver, and continuing changes final policy quality. The warm-start boundary defaults to iteration 30, matching the staged exploratory workflow.
+
+**Question:** does checkpoint/resume behaviour introduce an unintended confound relative to an uninterrupted ESCHER baseline with the same headline training budget?
+
+### 6. ESCHER learning-rate schedule ablation
+
+[`experiments/kuhn_poker/escher_lr_schedule_ablation/`](experiments/kuhn_poker/escher_lr_schedule_ablation/README.md)
+
+Compares the constant-learning-rate ESCHER baseline against a decaying learning-rate schedule under matched seeds and matched training budgets. The default scheduled arm uses cosine decay from the baseline learning rate to 10% of that value.
+
+**Question:** can learning-rate decay stabilise ESCHER's value/regret optimisation enough to reduce exploitability relative to the constant-learning-rate baseline?
+
+### 7. ESCHER average-policy reach-weighting ablation
+
+[`experiments/kuhn_poker/escher_reach_weighting_ablation/`](experiments/kuhn_poker/escher_reach_weighting_ablation/README.md)
+
+Compares the baseline average-policy regression loss, weighted by CFR iteration only, against a treatment that also weights samples by the acting player's reach probability. Reach multipliers are mean-normalised within each policy-training batch and exclude chance reach.
+
+**Question:** does reach-probability weighting improve the learned average policy produced from ESCHER's average-policy memory?
+
+### 8. ESCHER value-trajectory reuse ablation
+
+[`experiments/kuhn_poker/escher_reuse_value_trajectory_ablation/`](experiments/kuhn_poker/escher_reuse_value_trajectory_ablation/README.md)
+
+Compares the baseline ESCHER value-data collection scheme, which uses a dedicated history-value traversal pass, against a treatment that reuses player-0 regret traversals to populate the history-value memory. The treatment keeps value-test traversals for diagnostics but removes the dedicated value-training traversal pass.
+
+**Question:** can ESCHER reduce traversal cost by reusing regret trajectories for value training without degrading the learned average policy?
+
+### 9. ESCHER disk-backed regret-memory ablation
+
+[`experiments/kuhn_poker/escher_disk_backed_regret_memory_ablation/`](experiments/kuhn_poker/escher_disk_backed_regret_memory_ablation/README.md)
+
+Compares the standard in-memory regret replay buffers against a disk-backed TFRecord regret replay backend streamed during regret-network training. Average-policy replay is disk-backed in both arms so the treatment isolates regret-memory storage.
+
+**Question:** can ESCHER reduce regret replay RAM pressure with disk-backed TFRecord shards while preserving strategic performance?
+
+### 10. ESCHER on-policy joint-regret ablation
+
+[`experiments/kuhn_poker/escher_on_policy_joint_regret_ablation/`](experiments/kuhn_poker/escher_on_policy_joint_regret_ablation/README.md)
+
+Compares the baseline separate player-specific regret traversal batches against an on-policy joint-regret update variant. The treatment samples one trajectory batch from the current joint regret-matching policy and writes regret targets for the acting player at each visited decision node.
+
+**Question:** can ESCHER reduce regret-data generation work by collecting on-policy joint regret samples without degrading the learned average policy?
+
+### 11. ESCHER solver-parameter random search
+
+[`experiments/kuhn_poker/escher_solver_parameter_random_search/`](experiments/kuhn_poker/escher_solver_parameter_random_search/README.md)
+
+Runs a bounded two-stage random search over configurable ESCHER solver parameters. Screening evaluates the baseline plus sampled solver configurations under a reduced budget; confirmation compares the strongest sampled configurations against the ESCHER baseline with matched seeds and the full baseline budget.
+
+**Question:** is ESCHER's Kuhn poker non-convergence partly caused by a poor balance between traversal budget, value fitting, regret fitting, policy extraction, exploration, and network capacity?
+
 ## Setup
 
 Create and activate a virtual environment. The repository contains a placeholder `venv/` directory, but the actual environment is not committed.
@@ -120,6 +204,27 @@ python -m experiments.kuhn_poker.escher_checkpoint_stability.run
 
 # Experiment 4 — constrained hyperparameter search
 python -m experiments.kuhn_poker.escher_constrained_hyperparameter_search.run
+
+# Experiment 5 — warm-start/checkpoint-resume fair ablation
+python -m experiments.kuhn_poker.escher_warm_start_fair_ablation.run
+
+# Experiment 6 — learning-rate schedule ablation
+python -m experiments.kuhn_poker.escher_lr_schedule_ablation.run
+
+# Experiment 7 — average-policy reach-weighting ablation
+python -m experiments.kuhn_poker.escher_reach_weighting_ablation.run
+
+# Experiment 8 — value-trajectory reuse ablation
+python -m experiments.kuhn_poker.escher_reuse_value_trajectory_ablation.run
+
+# Experiment 9 — disk-backed regret-memory ablation
+python -m experiments.kuhn_poker.escher_disk_backed_regret_memory_ablation.run
+
+# Experiment 10 — on-policy joint-regret ablation
+python -m experiments.kuhn_poker.escher_on_policy_joint_regret_ablation.run
+
+# Experiment 11 — solver-parameter random search
+python -m experiments.kuhn_poker.escher_solver_parameter_random_search.run
 ```
 
 For a quick smoke test:
@@ -173,6 +278,96 @@ python -m experiments.kuhn_poker.escher_constrained_hyperparameter_search.run \
   --regret-network-train-steps 20 \
   --value-network-train-steps 20 \
   --output-root outputs/smoke_tests
+
+python -m experiments.kuhn_poker.escher_warm_start_fair_ablation.run \
+  --seeds 1234 \
+  --iterations 2 \
+  --warm-start-boundary 1 \
+  --traversals 5 \
+  --value-traversals 5 \
+  --policy-network-train-steps 2 \
+  --regret-network-train-steps 2 \
+  --value-network-train-steps 2 \
+  --evaluation-interval 1 \
+  --output-root outputs/smoke_tests
+
+python -m experiments.kuhn_poker.escher_lr_schedule_ablation.run \
+  --seeds 1234 \
+  --iterations 2 \
+  --traversals 5 \
+  --value-traversals 5 \
+  --policy-network-train-steps 2 \
+  --regret-network-train-steps 2 \
+  --value-network-train-steps 2 \
+  --evaluation-interval 1 \
+  --output-root outputs/smoke_tests
+
+python -m experiments.kuhn_poker.escher_reach_weighting_ablation.run \
+  --seeds 1234 \
+  --iterations 2 \
+  --traversals 5 \
+  --value-traversals 5 \
+  --policy-network-train-steps 2 \
+  --regret-network-train-steps 2 \
+  --value-network-train-steps 2 \
+  --evaluation-interval 1 \
+  --output-root outputs/smoke_tests
+
+python -m experiments.kuhn_poker.escher_reuse_value_trajectory_ablation.run \
+  --seeds 1234 \
+  --iterations 2 \
+  --traversals 5 \
+  --value-traversals 5 \
+  --value-test-traversals 2 \
+  --policy-network-train-steps 2 \
+  --regret-network-train-steps 2 \
+  --value-network-train-steps 2 \
+  --evaluation-interval 1 \
+  --output-root outputs/smoke_tests
+
+python -m experiments.kuhn_poker.escher_disk_backed_regret_memory_ablation.run \
+  --seeds 1234 \
+  --iterations 2 \
+  --traversals 5 \
+  --value-traversals 5 \
+  --policy-network-train-steps 2 \
+  --regret-network-train-steps 2 \
+  --value-network-train-steps 2 \
+  --evaluation-interval 1 \
+  --output-root outputs/smoke_tests
+
+python -m experiments.kuhn_poker.escher_on_policy_joint_regret_ablation.run \
+  --seeds 1234 \
+  --iterations 2 \
+  --traversals 5 \
+  --value-traversals 5 \
+  --policy-network-train-steps 2 \
+  --regret-network-train-steps 2 \
+  --value-network-train-steps 2 \
+  --evaluation-interval 1 \
+  --output-root outputs/smoke_tests
+
+python -m experiments.kuhn_poker.escher_solver_parameter_random_search.run \
+  --screening-seeds 1234 \
+  --confirmation-seeds 1234 \
+  --screening-iterations 2 \
+  --confirmation-iterations 2 \
+  --screening-evaluation-interval 1 \
+  --confirmation-evaluation-interval 1 \
+  --n-random-candidates 1 \
+  --confirmation-top-k 1 \
+  --traversals 5 \
+  --value-traversals 5 \
+  --policy-network-train-steps 2 \
+  --regret-network-train-steps 2 \
+  --value-network-train-steps 2 \
+  --policy-network-layers 32,32 \
+  --regret-network-layers 32,32 \
+  --value-network-layers 32,32 \
+  --all-actions true \
+  --use-balanced-probs false \
+  --val-bootstrap false \
+  --output-root outputs/smoke_tests
 ```
 
 Outputs are written to a timestamped subdirectory under `outputs/` by default. The key files are:
@@ -224,6 +419,99 @@ confirmation_paired_differences_vs_baseline.csv
 confirmation_paired_difference_summary.csv
 screening_exploitability_by_iteration.png
 confirmation_final_exploitability_by_variant.png
+```
+
+Warm-start ablations export paired continuous/resumed summaries and checkpoint-resume artifacts such as:
+
+```text
+seed_summary.csv
+paired_summary.csv
+paired_aggregate_summary.csv
+paired_checkpoint_differences.csv
+warm_start_exploitability_by_iteration.png
+warm_start_paired_delta_exploitability_warm_minus_baseline.png
+checkpoints/
+```
+
+Learning-rate schedule ablations export schedule-level summaries, paired deltas, active learning-rate curves, and diagnostics such as:
+
+```text
+seed_summary.csv
+schedule_aggregate_summary.csv
+paired_differences_vs_baseline.csv
+paired_difference_summary.csv
+checkpoint_curves.csv
+lr_schedule_learning_rates.png
+lr_schedule_exploitability_by_iteration.png
+lr_schedule_paired_delta_final_exploitability.png
+```
+
+Reach-weighting ablations export matched variant summaries, reach diagnostics, paired deltas, and plots such as:
+
+```text
+seed_summary.csv
+variant_aggregate_summary.csv
+paired_differences_vs_baseline.csv
+paired_difference_summary.csv
+checkpoint_curves.csv
+exploitability_by_iteration_reach_ablation.png
+paired_final_exploitability_delta_reach_minus_baseline.png
+```
+
+Value-trajectory reuse ablations export matched variant summaries, traversal-budget diagnostics, paired deltas, and plots such as:
+
+```text
+seed_summary.csv
+variant_aggregate_summary.csv
+paired_differences_vs_baseline.csv
+paired_difference_summary.csv
+checkpoint_curves.csv
+exploitability_by_iteration_reuse_ablation.png
+dedicated_value_traversals_reuse_ablation.png
+paired_final_exploitability_delta_reuse_minus_baseline.png
+```
+
+Disk-backed regret-memory ablations export matched variant summaries, memory/storage diagnostics, paired deltas, and plots such as:
+
+```text
+seed_summary.csv
+variant_aggregate_summary.csv
+paired_differences_vs_baseline.csv
+paired_difference_summary.csv
+checkpoint_curves.csv
+exploitability_by_iteration_regret_memory_ablation.png
+peak_rss_by_variant.png
+regret_storage_mb_by_variant.png
+paired_final_exploitability_delta_disk_minus_baseline.png
+replay/
+```
+
+On-policy joint-regret ablations export matched variant summaries, traversal-budget diagnostics, paired deltas, and plots such as:
+
+```text
+seed_summary.csv
+variant_aggregate_summary.csv
+paired_differences_vs_baseline.csv
+paired_difference_summary.csv
+checkpoint_curves.csv
+exploitability_by_iteration_on_policy_ablation.png
+nominal_regret_traversals_by_variant.png
+paired_final_exploitability_delta_on_policy_minus_baseline.png
+```
+
+Solver-parameter random searches export screening and confirmation summaries, paired confirmation deltas, stage-specific curves, sampled-parameter metadata, and plots such as:
+
+```text
+screening_seed_summary.csv
+screening_aggregate_by_variant.csv
+confirmation_seed_summary.csv
+confirmation_aggregate_by_variant.csv
+confirmation_paired_differences_vs_baseline.csv
+screening_checkpoint_curves.csv
+confirmation_checkpoint_curves.csv
+solver_parameter_random_search_curves.npz
+screening_exploitability_by_iteration.png
+confirmation_paired_delta_final_exploitability.png
 ```
 
 ## Notes for adding future experiments

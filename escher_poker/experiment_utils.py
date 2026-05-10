@@ -40,6 +40,16 @@ def make_escher_solver(
         num_traversals=int(config["num_traversals"]),
         num_val_fn_traversals=int(config["num_val_fn_traversals"]),
         learning_rate=float(config["learning_rate"]),
+        learning_rate_schedule=str(config.get("learning_rate_schedule", "constant")),
+        learning_rate_end=(
+            None
+            if config.get("learning_rate_end") is None
+            else float(config.get("learning_rate_end"))
+        ),
+        learning_rate_decay_rate=float(config.get("learning_rate_decay_rate", 0.1)),
+        learning_rate_warmup_iterations=int(
+            config.get("learning_rate_warmup_iterations", 0)
+        ),
         batch_size_regret=int(config["batch_size_regret"]),
         batch_size_value=int(config["batch_size_value"]),
         batch_size_average_policy=int(config["batch_size_average_policy"]),
@@ -51,6 +61,9 @@ def make_escher_solver(
         compute_exploitability=bool(config["compute_exploitability"]),
         reinitialize_regret_networks=bool(config["reinitialize_regret_networks"]),
         reinitialize_value_network=bool(config["reinitialize_value_network"]),
+        save_average_policy_memories=config.get("save_average_policy_memories"),
+        save_regret_memories=config.get("save_regret_memories"),
+        tfrecord_compression=config.get("tfrecord_compression"),
         save_policy_weights=bool(config["save_policy_weights"]),
         train_device=config["train_device"],
         infer_device=config["infer_device"],
@@ -63,7 +76,22 @@ def make_escher_solver(
         ),
         clear_value_buffer=bool(config.get("clear_value_buffer", True)),
         val_bootstrap=bool(config.get("val_bootstrap", False)),
+        use_balanced_probs=bool(config.get("use_balanced_probs", False)),
+        val_op_prob=float(config.get("val_op_prob", 0.0)),
         all_actions=bool(config.get("all_actions", True)),
+        use_reach_weighted_avg_policy_loss=bool(
+            config.get("use_reach_weighted_avg_policy_loss", False)
+        ),
+        reuse_regret_traversals_for_value=bool(
+            config.get("reuse_regret_traversals_for_value", False)
+        ),
+        on_policy_joint_regret_updates=bool(
+            config.get("on_policy_joint_regret_updates", False)
+        ),
+        value_test_traversals=int(config.get("value_test_traversals", 20)),
+        bootstrap_value_with_separate_traversal=bool(
+            config.get("bootstrap_value_with_separate_traversal", False)
+        ),
     )
 
 

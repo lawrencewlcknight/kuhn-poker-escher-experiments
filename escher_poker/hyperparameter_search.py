@@ -35,6 +35,7 @@ HP_OUTPUT_KEYS = [
     "value_network_layers",
     "batch_size_regret",
     "batch_size_value",
+    "batch_size_average_policy",
     "memory_capacity",
     "policy_network_train_steps",
     "regret_network_train_steps",
@@ -43,7 +44,13 @@ HP_OUTPUT_KEYS = [
     "reinitialize_value_network",
     "expl",
     "val_expl",
+    "importance_sampling",
+    "importance_sampling_threshold",
     "clear_value_buffer",
+    "val_bootstrap",
+    "use_balanced_probs",
+    "val_op_prob",
+    "all_actions",
 ]
 
 AGGREGATE_METRICS = [
@@ -87,6 +94,7 @@ def config_signature(config: Dict[str, Any]) -> tuple:
         "value_network_layers",
         "batch_size_regret",
         "batch_size_value",
+        "batch_size_average_policy",
         "memory_capacity",
         "policy_network_train_steps",
         "regret_network_train_steps",
@@ -95,7 +103,13 @@ def config_signature(config: Dict[str, Any]) -> tuple:
         "reinitialize_value_network",
         "expl",
         "val_expl",
+        "importance_sampling",
+        "importance_sampling_threshold",
         "clear_value_buffer",
+        "val_bootstrap",
+        "use_balanced_probs",
+        "val_op_prob",
+        "all_actions",
     ]
     return tuple((key, _hashable(config[key])) for key in keys if key in config)
 
@@ -118,6 +132,7 @@ def sample_candidate_configs(
     search_space: Dict[str, Sequence[Any]],
     n_candidates: int,
     rng_seed: int,
+    variant_id_prefix: str = "candidate",
 ) -> List[Dict[str, Any]]:
     """Sample unique random candidate configs around ``base_config``."""
     rng = random.Random(rng_seed)
@@ -133,7 +148,7 @@ def sample_candidate_configs(
         if sig in seen:
             continue
         seen.add(sig)
-        candidate["variant_id"] = f"candidate_{len(candidates) + 1:02d}"
+        candidate["variant_id"] = f"{variant_id_prefix}_{len(candidates) + 1:02d}"
         candidates.append(candidate)
     if len(candidates) < n_candidates:
         raise RuntimeError("Could not generate enough unique random candidates.")

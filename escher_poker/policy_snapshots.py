@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import pickle
+import random
 import re
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -39,6 +40,59 @@ def save_pickle(obj: Any, path: str | Path) -> None:
 def load_pickle(path: str | Path) -> Any:
     with open(path, "rb") as f:
         return pickle.load(f)
+
+
+def save_full_solver_checkpoint(
+    solver,
+    path: str | Path,
+    *,
+    include_rng: bool = True,
+) -> None:
+    """Save solver weights, replay buffers, counters, and optional RNG state."""
+    checkpoint = solver.extract_full_model()
+    checkpoint["version"] = 1
+    checkpoint["type"] = "escher_full_solver_checkpoint"
+    checkpoint["nodes_visited"] = int(getattr(solver, "_nodes_visited", 0))
+    if include_rng:
+        checkpoint["python_random_state"] = random.getstate()
+        checkpoint["numpy_random_state"] = np.random.get_state()
+        try:
+            checkpoint["tf_global_generator_state"] = (
+                tf.random.get_global_generator().state.numpy()
+            )
+        except Exception:
+            checkpoint["tf_global_generator_state"] = None
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    save_pickle(checkpoint, path)
+
+
+def load_full_solver_checkpoint(
+    solver,
+    path: str | Path,
+    *,
+    restore_rng: bool = True,
+):
+    """Restore a checkpoint produced by ``save_full_solver_checkpoint``."""
+    checkpoint = load_pickle(path)
+    solver.load_full_model(checkpoint)
+    if "nodes_visited" in checkpoint:
+        solver._nodes_visited = int(checkpoint["nodes_visited"])
+
+    if restore_rng:
+        if "python_random_state" in checkpoint:
+            random.setstate(checkpoint["python_random_state"])
+        if "numpy_random_state" in checkpoint:
+            np.random.set_state(checkpoint["numpy_random_state"])
+        if checkpoint.get("tf_global_generator_state") is not None:
+            try:
+                tf.random.get_global_generator().reset(
+                    checkpoint["tf_global_generator_state"]
+                )
+            except Exception:
+                pass
+    return solver
 
 
 def policy_snapshot_path(

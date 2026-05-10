@@ -9,8 +9,10 @@ from __future__ import annotations
 import collections
 import contextlib
 from datetime import datetime
+import glob
 import os
 import random
+import resource
 import time
 
 import numpy as np
@@ -38,6 +40,10 @@ class ESCHERSolver(policy.Policy):
                  num_traversals: int = 130000,
                  num_val_fn_traversals: int = 100,
                  learning_rate: float = 1e-3,
+                 learning_rate_schedule: str = 'constant',
+                 learning_rate_end: float = None,
+                 learning_rate_decay_rate: float = 0.1,
+                 learning_rate_warmup_iterations: int = 0,
                  batch_size_regret: int = 10000,
                  batch_size_value: int = 2024,
                  batch_size_average_policy: int = 10000,
@@ -50,6 +56,8 @@ class ESCHERSolver(policy.Policy):
                  reinitialize_regret_networks: bool = True,
                  reinitialize_value_network: bool = True,
                  save_regret_networks: str = None,
+                 save_regret_memories: str = None,
+                 tfrecord_compression: str = None,
                  append_legal_actions_mask=False,
                  save_average_policy_memories: str = None,
                  save_policy_weights=True,
@@ -69,6 +77,11 @@ class ESCHERSolver(policy.Policy):
                  all_actions=True,
                  random_policy_path=None,
                  verbose: bool = True,
+                 use_reach_weighted_avg_policy_loss: bool = False,
+                 reuse_regret_traversals_for_value: bool = False,
+                 on_policy_joint_regret_updates: bool = False,
+                 value_test_traversals: int = 20,
+                 bootstrap_value_with_separate_traversal: bool = False,
                  *args, **kwargs):
         """Initialize the ESCHER algorithm.
 
@@ -96,6 +109,10 @@ class ESCHERSolver(policy.Policy):
           save_average_policy_memories: saves the collected average_policy memories as a
             tfrecords file in the given location. This is not affected by
             memory_capacity. All memories are saved to disk and not kept in memory
+          save_regret_memories: If provided, regret memories are written to
+            disk-backed TFRecord shards instead of in-memory reservoir buffers.
+          tfrecord_compression: Optional TFRecord compression type for
+            disk-backed regret memory, for example ``"GZIP"``.
           infer_device: device used for TF-operations in the traversal branch.
             Format is anything accepted by tf.device
           train_device: device used for TF-operations in the NN training steps.
@@ -135,13 +152,29 @@ class ESCHERSolver(policy.Policy):
         self._reinit_value_network = reinitialize_value_network
         self._num_actions = game.num_distinct_actions()
         self._iteration = 1
-        self._learning_rate = learning_rate
+        self._base_learning_rate = float(learning_rate)
+        self._learning_rate_schedule = str(learning_rate_schedule)
+        self._learning_rate_end = (
+            float(learning_rate_end)
+            if learning_rate_end is not None
+            else self._base_learning_rate
+        )
+        self._learning_rate_decay_rate = float(learning_rate_decay_rate)
+        self._learning_rate_warmup_iterations = int(learning_rate_warmup_iterations)
+        self._learning_rate = self._base_learning_rate
         self._save_regret_networks = save_regret_networks
+        self._save_regret_memories = save_regret_memories
+        self._tfrecord_compression = tfrecord_compression
+        self._regret_memories_tfrecord_dir = None
+        self._regret_tfrecordfiles = [None for _ in range(self._num_players)]
+        self._regret_memory_counts = [0 for _ in range(self._num_players)]
         self._save_average_policy_memories = save_average_policy_memories
         self._infer_device = infer_device
         self._train_device = train_device
         self._memories_tfrecordpath = None
         self._memories_tfrecordfile = None
+        self._average_policy_tfrecord_dir = None
+        self._average_policy_shard_index = 0
         self._check_exploitability_every = check_exploitability_every
         self._expl = expl
         self._val_expl = val_expl
@@ -162,6 +195,18 @@ class ESCHERSolver(policy.Policy):
         self._experiment_string = experiment_string
         self._all_actions = all_actions
         self._random_policy_path = random_policy_path
+        self._use_reach_weighted_avg_policy_loss = bool(
+            use_reach_weighted_avg_policy_loss
+        )
+        self._reuse_regret_traversals_for_value = bool(
+            reuse_regret_traversals_for_value
+        )
+        self._on_policy_joint_regret_updates = bool(on_policy_joint_regret_updates)
+        self._value_test_traversals = int(value_test_traversals)
+        self._bootstrap_value_with_separate_traversal = bool(
+            bootstrap_value_with_separate_traversal
+        )
+        self._avg_policy_obs_count = 0
 
         # Initialize file save locations
         if self._save_regret_networks:
@@ -169,12 +214,35 @@ class ESCHERSolver(policy.Policy):
 
         if self._save_average_policy_memories:
             if os.path.isdir(self._save_average_policy_memories):
-                self._memories_tfrecordpath = os.path.join(
-                    self._save_average_policy_memories, 'average_policy_memories.tfrecord')
+                self._average_policy_tfrecord_dir = self._save_average_policy_memories
             else:
-                os.makedirs(
-                    os.path.split(self._save_average_policy_memories)[0], exist_ok=True)
-                self._memories_tfrecordpath = self._save_average_policy_memories
+                self._average_policy_tfrecord_dir = os.path.split(
+                    self._save_average_policy_memories
+                )[0]
+                os.makedirs(self._average_policy_tfrecord_dir, exist_ok=True)
+            pattern = os.path.join(
+                self._average_policy_tfrecord_dir,
+                "average_policy_memories_*.tfrecord*",
+            )
+            for old_file in glob.glob(pattern):
+                try:
+                    os.remove(old_file)
+                except OSError:
+                    pass
+            self._memories_tfrecordpath = self._average_policy_tfrecord_path()
+
+        if self._save_regret_memories:
+            self._regret_memories_tfrecord_dir = str(self._save_regret_memories)
+            os.makedirs(self._regret_memories_tfrecord_dir, exist_ok=True)
+            pattern = os.path.join(
+                self._regret_memories_tfrecord_dir,
+                "regret_memories_p*_iter*.tfrecord*",
+            )
+            for old_file in glob.glob(pattern):
+                try:
+                    os.remove(old_file)
+                except OSError:
+                    pass
 
         # Initialize policy network, loss, optimizer
         self._reinitialize_policy_network()
@@ -200,7 +268,7 @@ class ESCHERSolver(policy.Policy):
                 self._regret_networks_train.append(regret_network_train)
                 self._loss_regrets.append(tf.keras.losses.MeanSquaredError())
                 self._optimizer_regrets.append(
-                    tf.keras.optimizers.Adam(learning_rate=learning_rate))
+                    tf.keras.optimizers.Adam(learning_rate=self._learning_rate))
                 self._regret_train_step.append(self._get_regret_train_graph(player))
 
         self._create_memories(memory_capacity)
@@ -211,7 +279,7 @@ class ESCHERSolver(policy.Policy):
         self._build_network_once(self._val_network, self._value_embedding_size)
         self._build_network_once(self._val_network_train, self._value_embedding_size)
         self._loss_value = tf.keras.losses.MeanSquaredError()
-        self._optimizer_value = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+        self._optimizer_value = tf.keras.optimizers.Adam(learning_rate=self._learning_rate)
         self._value_train_step = self._get_value_train_graph()
         self._value_test_step = self._get_value_test_graph()
         self._verbose = verbose
@@ -270,6 +338,56 @@ class ESCHERSolver(policy.Policy):
         dummy_mask = tf.ones((1, self._num_actions), dtype=tf.float32)
         model((dummy_x, dummy_mask), training=False)
 
+    def _learning_rate_for_iteration(self, iteration):
+        """Return the configured learning rate for a CFR iteration index."""
+        iteration = int(iteration)
+        total = max(int(self._num_iterations), 1)
+        warmup = max(int(self._learning_rate_warmup_iterations), 0)
+        if warmup > 0 and iteration < warmup:
+            frac = (iteration + 1) / float(warmup)
+            return self._base_learning_rate * (0.1 + 0.9 * frac)
+
+        denom = max(total - warmup, 1)
+        progress = min(max((iteration - warmup) / float(denom), 0.0), 1.0)
+        schedule = self._learning_rate_schedule
+        if schedule == 'constant':
+            return self._base_learning_rate
+        if schedule == 'linear_decay':
+            return (
+                self._base_learning_rate
+                + progress * (self._learning_rate_end - self._base_learning_rate)
+            )
+        if schedule == 'cosine_decay':
+            cosine = 0.5 * (1.0 + np.cos(np.pi * progress))
+            return (
+                self._learning_rate_end
+                + (self._base_learning_rate - self._learning_rate_end) * cosine
+            )
+        if schedule == 'step_decay':
+            if progress < 0.5:
+                return self._base_learning_rate
+            stepped = self._base_learning_rate * self._learning_rate_decay_rate
+            return max(stepped, self._learning_rate_end)
+        raise ValueError(f'Unknown learning-rate schedule: {schedule}')
+
+    def _set_learning_rate_for_iteration(self, iteration):
+        learning_rate = float(self._learning_rate_for_iteration(iteration))
+        self._learning_rate = learning_rate
+        self._set_optimizer_learning_rate(getattr(self, "_optimizer_policy", None), learning_rate)
+        self._set_optimizer_learning_rate(getattr(self, "_optimizer_value", None), learning_rate)
+        for optimizer in getattr(self, "_optimizer_regrets", []):
+            self._set_optimizer_learning_rate(optimizer, learning_rate)
+        return learning_rate
+
+    @staticmethod
+    def _set_optimizer_learning_rate(optimizer, learning_rate):
+        if optimizer is None:
+            return
+        try:
+            optimizer.learning_rate.assign(float(learning_rate))
+        except Exception:
+            optimizer.learning_rate = float(learning_rate)
+
     @property
     def regret_buffers(self):
         return self._regret_memories
@@ -295,7 +413,17 @@ class ESCHERSolver(policy.Policy):
             'info_state': tf.io.FixedLenFeature([self._embedding_size], tf.float32),
             'action_probs': tf.io.FixedLenFeature([self._num_actions], tf.float32),
             'iteration': tf.io.FixedLenFeature([1], tf.float32),
-            'legal_actions': tf.io.FixedLenFeature([self._num_actions], tf.float32)
+            'legal_actions': tf.io.FixedLenFeature([self._num_actions], tf.float32),
+            'reach_prob': tf.io.FixedLenFeature(
+                [1],
+                tf.float32,
+                default_value=[1.0],
+            ),
+            'obs_index': tf.io.FixedLenFeature(
+                [1],
+                tf.float32,
+                default_value=[0.0],
+            ),
         }
         self._regret_feature_description = {
             'info_state': tf.io.FixedLenFeature([self._embedding_size], tf.float32),
@@ -317,6 +445,8 @@ class ESCHERSolver(policy.Policy):
         self._val_network.set_weights(weights)
 
     def get_num_calls(self):
+        if self._save_regret_memories:
+            return int(sum(self._regret_memory_counts))
         num_calls = 0
         for p in range(self._num_players):
             num_calls += self._regret_memories[p].get_num_calls()
@@ -340,6 +470,93 @@ class ESCHERSolver(policy.Policy):
     def get_regret_memories(self, player):
         return self._regret_memories[player].get_data()
 
+    def get_regret_memory_count(self, player):
+        if self._save_regret_memories:
+            return int(self._regret_memory_counts[player])
+        return int(len(self._regret_memories[player].get_data()))
+
+    def get_regret_memory_storage_bytes(self, player=None):
+        if not self._save_regret_memories or not self._regret_memories_tfrecord_dir:
+            return 0
+        if player is None:
+            pattern = os.path.join(
+                self._regret_memories_tfrecord_dir,
+                "regret_memories_p*_iter*.tfrecord*",
+            )
+        else:
+            pattern = self._regret_tfrecord_pattern(player)
+        return int(sum(os.path.getsize(path) for path in glob.glob(pattern)))
+
+    def _current_rss_mb(self):
+        try:
+            rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            return float(rss / (1024.0 ** 2) if rss > 10_000_000 else rss / 1024.0)
+        except Exception:
+            return np.nan
+
+    def _regret_tfrecord_pattern(self, player):
+        return os.path.join(
+            self._regret_memories_tfrecord_dir,
+            f"regret_memories_p{player}_iter*.tfrecord*",
+        )
+
+    def _open_regret_memory_writer(self, player):
+        if not self._save_regret_memories:
+            return
+        if self._regret_tfrecordfiles[player] is not None:
+            self._close_regret_memory_writer(player)
+        shard_path = os.path.join(
+            self._regret_memories_tfrecord_dir,
+            f"regret_memories_p{player}_iter{self._iteration:06d}.tfrecord",
+        )
+        options = (
+            tf.io.TFRecordOptions(compression_type=self._tfrecord_compression)
+            if self._tfrecord_compression
+            else None
+        )
+        self._regret_tfrecordfiles[player] = tf.io.TFRecordWriter(
+            shard_path,
+            options=options,
+        )
+
+    def _close_regret_memory_writer(self, player):
+        writer = self._regret_tfrecordfiles[player]
+        if writer is not None:
+            writer.close()
+            self._regret_tfrecordfiles[player] = None
+
+    def _average_policy_tfrecord_path(self):
+        return os.path.join(
+            self._average_policy_tfrecord_dir,
+            f"average_policy_memories_{self._average_policy_shard_index:06d}.tfrecord",
+        )
+
+    def _average_policy_tfrecord_pattern(self):
+        return os.path.join(
+            self._average_policy_tfrecord_dir,
+            "average_policy_memories_*.tfrecord*",
+        )
+
+    def _open_average_policy_memory_writer(self):
+        if not self._save_average_policy_memories:
+            return
+        if self._memories_tfrecordfile is not None:
+            self._close_average_policy_memory_writer()
+        self._memories_tfrecordpath = self._average_policy_tfrecord_path()
+        self._memories_tfrecordfile = tf.io.TFRecordWriter(self._memories_tfrecordpath)
+
+    def _close_average_policy_memory_writer(self):
+        if self._memories_tfrecordfile is not None:
+            self._memories_tfrecordfile.close()
+            self._memories_tfrecordfile = None
+
+    def _advance_average_policy_memory_writer(self):
+        if not self._save_average_policy_memories:
+            return
+        self._close_average_policy_memory_writer()
+        self._average_policy_shard_index += 1
+        self._open_average_policy_memory_writer()
+
     def get_value_memory(self):
         return self._value_memory.get_data()
 
@@ -351,6 +568,11 @@ class ESCHERSolver(policy.Policy):
 
     def get_average_policy_memories(self):
         return self._average_policy_memories.get_data()
+
+    def get_average_policy_memory_count(self):
+        if self._save_average_policy_memories:
+            return int(self._avg_policy_obs_count)
+        return int(len(self.get_average_policy_memories()))
 
     def get_num_nodes(self):
         return self._nodes_visited
@@ -374,14 +596,26 @@ class ESCHERSolver(policy.Policy):
         self._value_memory.clear()
 
     def traverse_game_tree_n_times(self, n, p, train_regret=False, train_value=False,
+                                   record_value=False,
                                    track_mean_squares=True, on_policy_prob=0., expl=0.6, val_test=False):
         for i in range(n):
             if i > 0:
                 track_mean_squares = False
             self._traverse_game_tree(self._root_node, p, my_reach=1.0, opp_reach=1.0, sample_reach=1.0,
-                                     my_sample_reach=1.0, train_regret=train_regret, train_value=train_value,
+                                     my_sample_reach=1.0, chance_reach=1.0,
+                                     train_regret=train_regret, train_value=train_value,
+                                     record_value=record_value,
                                      track_mean_squares=track_mean_squares, on_policy_prob=on_policy_prob,
                                      expl=expl, val_test=val_test)
+
+    def traverse_game_tree_joint_on_policy_n_times(self, n, track_mean_squares=False):
+        """Collect regret samples from trajectories under the current joint policy."""
+        for i in range(n):
+            self._traverse_game_tree_joint_on_policy(
+                self._root_node,
+                track_mean_squares=(track_mean_squares and i == 0),
+                last_action=0,
+            )
 
     def init_regret_net(self):
         # initialize regret network
@@ -485,13 +719,14 @@ class ESCHERSolver(policy.Policy):
         with tf.device(self._infer_device):
             with contextlib.ExitStack() as stack:
                 if self._save_average_policy_memories:
-                    self._memories_tfrecordfile = stack.enter_context(
-                        tf.io.TFRecordWriter(self._memories_tfrecordpath))
+                    self._open_average_policy_memory_writer()
+                    stack.callback(self._close_average_policy_memory_writer)
 
                 # Build networks/memories with a minimal traversal before the main loop.
                 self.traverse_game_tree_n_times(1, 0, track_mean_squares=False)
 
                 for i in range(self._num_iterations + 1):
+                    current_lr = self._set_learning_rate_for_iteration(i)
                     if self._verbose:
                         print(i)
                     if self._verbose and self._experiment_string is not None:
@@ -501,49 +736,127 @@ class ESCHERSolver(policy.Policy):
                     self.init_regret_net()
                     self.init_val_net()
 
-                    # Train the history-value function.
-                    self.traverse_game_tree_n_times(
-                        self._num_val_fn_traversals, 0, train_value=True,
-                        track_mean_squares=False, on_policy_prob=self._val_op_prob,
-                        expl=self._val_expl)
-                    self.traverse_game_tree_n_times(
-                        20, 0, train_value=True, track_mean_squares=False,
-                        on_policy_prob=self._val_op_prob, expl=self._val_expl,
-                        val_test=True)
-                    if self._reinit_value_network:
-                        self._reinitialize_value_network()
-                    value_loss = self._learn_value_network()
-                    value_losses.append(value_loss)
-                    last_value_loss = _to_float(value_loss)
-                    last_value_test_loss = _to_float(self._get_value_test_loss())
-                    if self._clear_value_buffer:
-                        self.clear_val_memories_test()
-                        self.clear_val_memories()
-
-                    # Train regret networks, one player at a time.
-                    track_mse = True
-                    for p in range(self._num_players):
+                    # Train the history-value function. Baseline ESCHER uses a
+                    # separate value-traversal pass; the reuse ablation fills
+                    # value memory during player-0 regret traversals below.
+                    if not self._reuse_regret_traversals_for_value:
                         self.traverse_game_tree_n_times(
-                            self._num_traversals, p, train_regret=True,
-                            track_mean_squares=track_mse, expl=self._expl)
+                            self._num_val_fn_traversals, 0, train_value=True,
+                            track_mean_squares=False, on_policy_prob=self._val_op_prob,
+                            expl=self._val_expl)
+                        self.traverse_game_tree_n_times(
+                            self._value_test_traversals, 0, train_value=True,
+                            track_mean_squares=False,
+                            on_policy_prob=self._val_op_prob, expl=self._val_expl,
+                            val_test=True)
+                        if self._reinit_value_network:
+                            self._reinitialize_value_network()
+                        value_loss = self._learn_value_network()
+                        value_losses.append(value_loss)
+                        last_value_loss = _to_float(value_loss)
+                        last_value_test_loss = _to_float(self._get_value_test_loss())
+                        if self._clear_value_buffer:
+                            self.clear_val_memories_test()
+                            self.clear_val_memories()
+                    elif self._bootstrap_value_with_separate_traversal and i == 0:
+                        self.traverse_game_tree_n_times(
+                            self._num_val_fn_traversals, 0, train_value=True,
+                            track_mean_squares=False, on_policy_prob=self._val_op_prob,
+                            expl=self._val_expl)
+                        if self._reinit_value_network:
+                            self._reinitialize_value_network()
+                        value_loss = self._learn_value_network()
+                        value_losses.append(value_loss)
+                        last_value_loss = _to_float(value_loss)
+                        if self._clear_value_buffer:
+                            self.clear_val_memories()
+
+                    # Train regret networks. Baseline ESCHER uses separate
+                    # player-specific regret traversal batches. The on-policy
+                    # ablation uses one joint trajectory batch and writes regret
+                    # samples for whichever player acts at visited decision nodes.
+                    track_mse = True
+                    if self._on_policy_joint_regret_updates:
+                        opened_regret_writers = []
+                        try:
+                            if self._save_regret_memories:
+                                for p in range(self._num_players):
+                                    self._open_regret_memory_writer(p)
+                                    opened_regret_writers.append(p)
+                            self.traverse_game_tree_joint_on_policy_n_times(
+                                self._num_traversals,
+                                track_mean_squares=track_mse,
+                            )
+                        finally:
+                            if self._save_regret_memories:
+                                for p in reversed(opened_regret_writers):
+                                    self._close_regret_memory_writer(p)
                         num_nodes = self.get_num_nodes()
-                        if self._reinitialize_regret_networks:
-                            self._reinitialize_regret_network(p)
-                        regret_loss = self._learn_regret_network(p)
-                        regret_losses[p].append(regret_loss)
-                        last_regret_losses[p] = _to_float(regret_loss)
-                        if self._save_regret_networks:
-                            os.makedirs(self._save_regret_networks, exist_ok=True)
-                            self._regret_networks[p].save(
-                                os.path.join(self._save_regret_networks,
-                                             f'regretnet_p{p}_it{self._iteration:04}'))
+                        for p in range(self._num_players):
+                            if self._reinitialize_regret_networks:
+                                self._reinitialize_regret_network(p)
+                            regret_loss = self._learn_regret_network(p)
+                            regret_losses[p].append(regret_loss)
+                            last_regret_losses[p] = _to_float(regret_loss)
+                            if self._save_regret_networks:
+                                os.makedirs(self._save_regret_networks, exist_ok=True)
+                                self._regret_networks[p].save(
+                                    os.path.join(self._save_regret_networks,
+                                                 f'regretnet_p{p}_it{self._iteration:04}'))
+                    else:
+                        for p in range(self._num_players):
+                            record_value = bool(
+                                self._reuse_regret_traversals_for_value and p == 0
+                            )
+                            if self._save_regret_memories:
+                                self._open_regret_memory_writer(p)
+                            try:
+                                self.traverse_game_tree_n_times(
+                                    self._num_traversals, p, train_regret=True,
+                                    record_value=record_value,
+                                    track_mean_squares=track_mse, expl=self._expl)
+                            finally:
+                                if self._save_regret_memories:
+                                    self._close_regret_memory_writer(p)
+                            num_nodes = self.get_num_nodes()
+                            if self._reinitialize_regret_networks:
+                                self._reinitialize_regret_network(p)
+                            regret_loss = self._learn_regret_network(p)
+                            regret_losses[p].append(regret_loss)
+                            last_regret_losses[p] = _to_float(regret_loss)
+                            if self._save_regret_networks:
+                                os.makedirs(self._save_regret_networks, exist_ok=True)
+                                self._regret_networks[p].save(
+                                    os.path.join(self._save_regret_networks,
+                                                 f'regretnet_p{p}_it{self._iteration:04}'))
+
+                    if self._reuse_regret_traversals_for_value:
+                        self.traverse_game_tree_n_times(
+                            self._value_test_traversals, 0, train_value=True,
+                            track_mean_squares=False,
+                            on_policy_prob=self._val_op_prob, expl=self._val_expl,
+                            val_test=True)
+                        if self._reinit_value_network:
+                            self._reinitialize_value_network()
+                        value_loss = self._learn_value_network()
+                        value_losses.append(value_loss)
+                        last_value_loss = _to_float(value_loss)
+                        last_value_test_loss = _to_float(self._get_value_test_loss())
+                        if self._clear_value_buffer:
+                            self.clear_val_memories_test()
+                            self.clear_val_memories()
 
                     # Evaluate the learned average policy at fixed checkpoints.
                     self._iteration += 1
                     if self._compute_exploitability and i % self._check_exploitability_every == 0:
+                        if self._save_average_policy_memories:
+                            self._close_average_policy_memory_writer()
                         self._reinitialize_policy_network()
                         policy_loss = self._learn_average_policy_network()
                         policy_loss_float = _to_float(policy_loss)
+                        if self._save_average_policy_memories:
+                            self._average_policy_shard_index += 1
+                            self._open_average_policy_memory_writer()
 
                         if self._save_policy_weights:
                             save_path_model = (save_path_convs if save_path_convs is not None else './tmp/results') + "/" + timestr
@@ -565,14 +878,19 @@ class ESCHERSolver(policy.Policy):
                         diagnostics["iteration"].append(int(i + 1))
                         diagnostics["solver_iteration"].append(int(self._iteration))
                         diagnostics["wall_clock_seconds"].append(float(time.time() - solve_start_time))
+                        diagnostics["learning_rate"].append(float(current_lr))
                         diagnostics["policy_loss"].append(policy_loss_float)
                         diagnostics["value_loss"].append(float(last_value_loss))
                         diagnostics["value_test_loss"].append(float(last_value_test_loss))
                         diagnostics["regret_loss_player_0"].append(float(last_regret_losses.get(0, np.nan)))
                         diagnostics["regret_loss_player_1"].append(float(last_regret_losses.get(1, np.nan)))
-                        diagnostics["average_policy_buffer_size"].append(int(len(self.get_average_policy_memories())))
-                        diagnostics["regret_buffer_size_player_0"].append(int(len(self.get_regret_memories(0))))
-                        diagnostics["regret_buffer_size_player_1"].append(int(len(self.get_regret_memories(1))))
+                        diagnostics["average_policy_buffer_size"].append(int(self.get_average_policy_memory_count()))
+                        diagnostics["regret_buffer_size_player_0"].append(int(self.get_regret_memory_count(0)))
+                        diagnostics["regret_buffer_size_player_1"].append(int(self.get_regret_memory_count(1)))
+                        diagnostics["regret_storage_bytes_player_0"].append(int(self.get_regret_memory_storage_bytes(0)))
+                        diagnostics["regret_storage_bytes_player_1"].append(int(self.get_regret_memory_storage_bytes(1)))
+                        diagnostics["regret_storage_bytes_total"].append(int(self.get_regret_memory_storage_bytes()))
+                        diagnostics["peak_rss_mb"].append(float(self._current_rss_mb()))
                         diagnostics["value_buffer_size"].append(int(len(self.get_value_memory())))
                         diagnostics["value_test_buffer_size"].append(int(len(self.get_value_memory_test())))
 
@@ -613,22 +931,42 @@ class ESCHERSolver(policy.Policy):
         policy_loss = self._learn_average_policy_network()
         return policy_loss
 
-    def _add_to_average_policy_memory(self, info_state, iteration,
-                                      average_policy_action_probs, legal_actions_mask):
+    def _add_to_average_policy_memory(
+        self,
+        info_state,
+        iteration,
+        average_policy_action_probs,
+        legal_actions_mask,
+        reach_prob=1.0,
+    ):
         # pylint: disable=g-doc-args
         """Adds the given average_policy data to the memory.
 
         Uses either a tfrecordsfile on disk if provided, or a reservoir buffer.
         """
+        self._avg_policy_obs_count += 1
         serialized_example = self._serialize_average_policy_memory(
-            info_state, iteration, average_policy_action_probs, legal_actions_mask)
+            info_state,
+            iteration,
+            average_policy_action_probs,
+            legal_actions_mask,
+            reach_prob,
+            self._avg_policy_obs_count,
+        )
         if self._save_average_policy_memories:
             self._memories_tfrecordfile.write(serialized_example)
         else:
             self._average_policy_memories.add(serialized_example)
 
-    def _serialize_average_policy_memory(self, info_state, iteration,
-                                         average_policy_action_probs, legal_actions_mask):
+    def _serialize_average_policy_memory(
+        self,
+        info_state,
+        iteration,
+        average_policy_action_probs,
+        legal_actions_mask,
+        reach_prob=1.0,
+        obs_index=0,
+    ):
         """Create serialized example to store a average_policy entry."""
         example = tf.train.Example(
             features=tf.train.Features(
@@ -645,7 +983,13 @@ class ESCHERSolver(policy.Policy):
                             float_list=tf.train.FloatList(value=[iteration])),
                     'legal_actions':
                         tf.train.Feature(
-                            float_list=tf.train.FloatList(value=legal_actions_mask))
+                            float_list=tf.train.FloatList(value=legal_actions_mask)),
+                    'reach_prob':
+                        tf.train.Feature(
+                            float_list=tf.train.FloatList(value=[float(reach_prob)])),
+                    'obs_index':
+                        tf.train.Feature(
+                            float_list=tf.train.FloatList(value=[float(obs_index)])),
                 }))
         return example.SerializeToString()
 
@@ -653,7 +997,34 @@ class ESCHERSolver(policy.Policy):
         """Deserializes a batch of average_policy examples for the train step."""
         tups = tf.io.parse_example(serialized, self._average_policy_feature_description)
         return (tups['info_state'], tups['action_probs'], tups['iteration'],
-                tups['legal_actions'])
+                tups['legal_actions'], tups['reach_prob'], tups['obs_index'])
+
+    def _add_to_regret_memory(
+        self,
+        player,
+        info_state,
+        iteration,
+        samp_regret,
+        legal_actions_mask,
+    ):
+        """Adds regret data either to RAM replay or disk-backed TFRecord replay."""
+        serialized_example = self._serialize_regret_memory(
+            info_state,
+            iteration,
+            samp_regret,
+            legal_actions_mask,
+        )
+        if self._save_regret_memories:
+            writer = self._regret_tfrecordfiles[player]
+            if writer is None:
+                raise RuntimeError(
+                    "Disk-backed regret memory is enabled but no TFRecord writer "
+                    "is open for the active regret traversal."
+                )
+            writer.write(serialized_example)
+            self._regret_memory_counts[player] += 1
+        else:
+            self._regret_memories[player].add(serialized_example)
 
     def _serialize_regret_memory(self, info_state, iteration, samp_regret,
                                  legal_actions_mask):
@@ -762,7 +1133,8 @@ class ESCHERSolver(policy.Policy):
             return num_nodes
 
     def _traverse_game_tree(self, state, player, my_reach, opp_reach, sample_reach,
-                            my_sample_reach, train_regret, train_value,
+                            my_sample_reach, chance_reach, train_regret, train_value,
+                            record_value=False,
                             on_policy_prob=0., track_mean_squares=True, expl=1.0, val_test=False, last_action=0):
         """Performs a traversal of the game tree using external sampling.
 
@@ -789,7 +1161,9 @@ class ESCHERSolver(policy.Policy):
             new_state = state.child(action)
             return self._traverse_game_tree(new_state, player, my_reach,
                                             probs[aidx] * opp_reach, probs[aidx] * sample_reach, my_sample_reach,
-                                            train_regret, train_value, expl=expl,
+                                            probs[aidx] * chance_reach,
+                                            train_regret, train_value,
+                                            record_value=record_value, expl=expl,
                                             track_mean_squares=track_mean_squares, val_test=val_test,
                                             last_action=action)
 
@@ -841,7 +1215,8 @@ class ESCHERSolver(policy.Policy):
 
         iw_sampled_value, sampled_value = self._traverse_game_tree(new_state, player, new_my_reach,
                                                                    new_opp_reach, new_sample_reach, new_my_sample_reach,
-                                                                   train_regret, train_value, expl=expl,
+                                                                   chance_reach, train_regret, train_value,
+                                                                   record_value=record_value, expl=expl,
                                                                    track_mean_squares=track_mean_squares,
                                                                    val_test=val_test, last_action=sampled_action)
         importance_weighted_sampled_value = iw_sampled_value * policy[sampled_action] / sample_policy[sampled_action]
@@ -876,19 +1251,27 @@ class ESCHERSolver(policy.Policy):
 
                 network_input = state.information_state_tensor()
 
-                self._regret_memories[player].add(self._serialize_regret_memory(network_input,
-                                                                                self._iteration,
-                                                                                samp_regret,
-                                                                                state.legal_actions_mask(
-                                                                                    player)))
+                self._add_to_regret_memory(
+                    player,
+                    network_input,
+                    self._iteration,
+                    samp_regret,
+                    state.legal_actions_mask(player),
+                )
             else:
                 obs_input = state.information_state_tensor(cur_player)
-
-                self._add_to_average_policy_memory(obs_input, self._iteration,
-                                                   policy, state.legal_actions_mask(cur_player))
+                actor_reach = opp_reach / max(chance_reach, 1e-12)
+                actor_reach = float(np.clip(actor_reach, 0.0, 1.0))
+                self._add_to_average_policy_memory(
+                    obs_input,
+                    self._iteration,
+                    policy,
+                    state.legal_actions_mask(cur_player),
+                    reach_prob=actor_reach,
+                )
 
         # value function predicts value for player 0
-        if train_value:
+        if train_value or record_value:
             # if op_prob = 0 then we are doing importance weighted sampling
             # if op_prob > 0 then we need to wait until expl = 0 to get pure on-policy rollouts
             if on_policy_prob == 0 or expl == 0:
@@ -915,6 +1298,97 @@ class ESCHERSolver(policy.Policy):
                                                      state.legal_actions_mask(cur_player)))
 
         return importance_weighted_sampled_value, sampled_value
+
+    def _traverse_game_tree_joint_on_policy(
+        self,
+        state,
+        track_mean_squares=False,
+        last_action=0,
+    ):
+        """Sample one joint-policy trajectory and train the acting player at each node."""
+        self._nodes_visited += 1
+
+        if state.is_terminal():
+            return
+
+        if state.is_chance_node():
+            outcomes, probs = zip(*state.chance_outcomes())
+            action = outcomes[np.random.choice(range(len(outcomes)), p=probs)]
+            self._traverse_game_tree_joint_on_policy(
+                state.child(action),
+                track_mean_squares=track_mean_squares,
+                last_action=action,
+            )
+            return
+
+        cur_player = state.current_player()
+        legal_actions = state.legal_actions(cur_player)
+        num_actions = state.num_distinct_actions()
+        legal_mask = np.asarray(
+            state.legal_actions_mask(cur_player),
+            dtype=np.float64,
+        )
+
+        _, policy = self._sample_action_from_regret(state, cur_player)
+        policy = np.asarray(policy, dtype=np.float64) * legal_mask
+        if policy.sum() <= 0.0 or not np.isfinite(policy.sum()):
+            policy = legal_mask / legal_mask.sum()
+        else:
+            policy = policy / policy.sum()
+
+        sampled_action = np.random.choice(range(num_actions), p=policy)
+        value_estimate = self._estimate_value_from_hist(
+            state.clone(),
+            cur_player,
+            last_action=last_action,
+        )
+        child_values = np.zeros(num_actions, dtype=np.float64)
+        if self._all_actions:
+            for action in legal_actions:
+                child_values[action] = self._estimate_value_from_hist(
+                    state.clone().child(action),
+                    cur_player,
+                    last_action=action,
+                )
+        else:
+            child_values[sampled_action] = self._estimate_value_from_hist(
+                state.clone().child(sampled_action),
+                cur_player,
+                last_action=sampled_action,
+            )
+
+        if track_mean_squares:
+            oracle_value = self._exact_value(state.clone(), cur_player)
+            oracle_child_value = self._exact_value(
+                state.clone().child(sampled_action),
+                cur_player,
+            )
+            self._squared_errors.append((oracle_value - value_estimate) ** 2)
+            self._squared_errors_child.append(
+                (oracle_child_value - child_values[sampled_action]) ** 2
+            )
+
+        sampled_regret = (child_values - value_estimate) * legal_mask
+        info_state = state.information_state_tensor(cur_player)
+        self._add_to_regret_memory(
+            cur_player,
+            info_state,
+            self._iteration,
+            sampled_regret,
+            state.legal_actions_mask(cur_player),
+        )
+        self._add_to_average_policy_memory(
+            info_state,
+            self._iteration,
+            policy,
+            state.legal_actions_mask(cur_player),
+        )
+
+        self._traverse_game_tree_joint_on_policy(
+            state.child(sampled_action),
+            track_mean_squares=track_mean_squares,
+            last_action=sampled_action,
+        )
 
     @tf.function
     def _init_main_regret_network(self, info_state, legal_actions_mask, player):
@@ -1022,8 +1496,20 @@ class ESCHERSolver(policy.Policy):
 
     def _get_regret_dataset(self, player):
         """Returns the collected regrets for the given player as a dataset."""
-        data = self.get_regret_memories(player)
-        data = tf.data.Dataset.from_tensor_slices(data)
+        if self._save_regret_memories:
+            files = sorted(glob.glob(self._regret_tfrecord_pattern(player)))
+            if not files:
+                raise RuntimeError(f"No regret TFRecord shards found for player {player}.")
+            data = tf.data.TFRecordDataset(
+                files,
+                compression_type=(
+                    self._tfrecord_compression if self._tfrecord_compression else None
+                ),
+                num_parallel_reads=tf.data.experimental.AUTOTUNE,
+            )
+        else:
+            data = self.get_regret_memories(player)
+            data = tf.data.Dataset.from_tensor_slices(data)
         data = data.shuffle(REGRET_TRAIN_SHUFFLE_SIZE)
         data = data.repeat()
         data = data.batch(self._batch_size_regret)
@@ -1164,7 +1650,12 @@ class ESCHERSolver(policy.Policy):
 
     def _get_average_policy_dataset(self):
         """Returns the collected average_policy memories as a dataset."""
-        if self._memories_tfrecordpath:
+        if self._average_policy_tfrecord_dir:
+            files = sorted(glob.glob(self._average_policy_tfrecord_pattern()))
+            if not files:
+                raise RuntimeError("No average-policy TFRecord shards found.")
+            data = tf.data.TFRecordDataset(files)
+        elif self._memories_tfrecordpath:
             data = tf.data.TFRecordDataset(self._memories_tfrecordpath)
         else:
             data = self.get_average_policy_memories()
@@ -1185,12 +1676,28 @@ class ESCHERSolver(policy.Policy):
         """
 
         @tf.function
-        def train_step(info_states, action_probs, iterations, masks):
+        def train_step(info_states, action_probs, iterations, masks, reach_probs, obs_indices):
             model = self._policy_network
+            del obs_indices
             with tf.GradientTape() as tape:
                 preds = model((info_states, masks), training=True)
+                iter_weights = tf.squeeze(iterations, axis=-1) * (
+                    2.0 / tf.cast(self._iteration, tf.float32)
+                )
+                if self._use_reach_weighted_avg_policy_loss:
+                    reach_weights = tf.squeeze(reach_probs, axis=-1)
+                    reach_weights = tf.clip_by_value(reach_weights, 1e-8, 1.0)
+                    reach_weights = reach_weights / (
+                        tf.reduce_mean(reach_weights) + 1e-8
+                    )
+                    sample_weight = iter_weights * reach_weights
+                else:
+                    sample_weight = iter_weights
                 main_loss = self._loss_policy(
-                    action_probs, preds, sample_weight=iterations * 2 / self._iteration)
+                    action_probs,
+                    preds,
+                    sample_weight=sample_weight,
+                )
                 loss = tf.add_n([main_loss], model.losses)
             gradients = tape.gradient(loss, model.trainable_variables)
             self._optimizer_policy.apply_gradients(
