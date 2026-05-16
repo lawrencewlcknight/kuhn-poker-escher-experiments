@@ -5,7 +5,7 @@ This file describes the basic checks for the ESCHER Kuhn poker repository.
 ## 1. Environment setup
 
 ```bash
-python -m venv venv
+python3.9 -m venv venv
 source venv/bin/activate            # macOS/Linux
 # .\venv\Scripts\Activate.ps1       # Windows PowerShell
 pip install --upgrade pip

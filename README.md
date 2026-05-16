@@ -176,10 +176,11 @@ Runs a bounded two-stage random search over configurable ESCHER solver parameter
 
 ## Setup
 
-Create and activate a virtual environment. The repository contains a placeholder `venv/` directory, but the actual environment is not committed.
+Create and activate a Python 3.9 virtual environment. The repository contains
+a placeholder `venv/` directory, but the actual environment is not committed.
 
 ```bash
-python -m venv venv
+python3.9 -m venv venv
 source venv/bin/activate       # macOS/Linux
 # .\venv\Scripts\Activate.ps1   # Windows PowerShell
 pip install --upgrade pip
