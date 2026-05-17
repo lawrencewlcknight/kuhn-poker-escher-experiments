@@ -1,8 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "kuhn-poker-escher-experiments"
 version = "0.1.0"
 description = "Kuhn poker ESCHER experiments for neural CFR thesis work"
 requires-python = ">=3.9,<3.10"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+  "escher_poker",
+  "escher_poker.*",
+  "experiments",
+  "experiments.*",
+]
+exclude = [
+  "outputs*",
+  "notebooks*",
+  "thesis_artifacts*",
+  "gcp*",
+  "tests*",
+]
 
 [tool.ruff]
 line-length = 100
