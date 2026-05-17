@@ -15,6 +15,7 @@ venv/
 # scripts/promote_thesis_artifacts.py instead.
 outputs/*
 !outputs/.gitkeep
+cloud_outputs
 cloud_outputs/
 chart_exports/
 
