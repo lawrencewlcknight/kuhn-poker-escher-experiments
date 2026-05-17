@@ -462,6 +462,10 @@ Describe one job:
 gcloud batch jobs describe JOB_NAME --location "$REGION"
 ```
 
+After an experiment has completed, the output from `gcloud batch jobs describe`
+can also be reviewed to determine how long the Batch job took to run. This is
+useful for comparing VM sizes and setting future `MAX_RUN_SECONDS` values.
+
 Possible states include:
 
 - `QUEUED`
@@ -482,6 +486,17 @@ Copy outputs back to your local machine:
 mkdir -p cloud_outputs/JOB_NAME
 gcloud storage cp -r "$BUCKET/JOB_NAME/*" "cloud_outputs/JOB_NAME/"
 ```
+
+After reviewing the downloaded outputs, promote only lightweight thesis-facing
+artifacts into the tracked repo:
+
+```bash
+python scripts/promote_thesis_artifacts.py cloud_outputs/JOB_NAME --dry-run
+python scripts/promote_thesis_artifacts.py cloud_outputs/JOB_NAME
+```
+
+See [THESIS_ARTIFACTS.md](THESIS_ARTIFACTS.md) for the promotion workflow and
+filtering rules.
 
 ---
 

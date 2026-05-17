@@ -386,6 +386,10 @@ regret_loss_diagnostic.png
 value_loss_diagnostic.png
 ```
 
+Full `outputs/` directories are scratch working data and are gitignored. Curated
+lightweight thesis-facing results can be promoted into the tracked
+`thesis_artifacts/` tree with [docs/THESIS_ARTIFACTS.md](docs/THESIS_ARTIFACTS.md).
+
 Ablation experiments also export variant-level and paired-comparison files such as:
 
 ```text
