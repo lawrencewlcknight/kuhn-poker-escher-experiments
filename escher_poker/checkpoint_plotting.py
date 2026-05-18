@@ -8,6 +8,13 @@ from typing import Any, Dict, List
 import matplotlib.pyplot as plt
 import numpy as np
 
+from .constants import (
+    AVERAGE_POLICY_VALUE_TARGET_LABEL,
+    KUHN_AVERAGE_POLICY_VALUE_TARGET,
+    NASH_EXPLOITABILITY_TARGET,
+    NASH_EXPLOITABILITY_TARGET_LABEL,
+)
+
 
 def _matrix_to_arrays(matrix: Dict[int, Dict[int, float]]):
     rows = sorted(matrix)
@@ -73,6 +80,8 @@ def plot_checkpoint_training_summary(
     baseline_rows: List[Dict[str, Any]],
     final_iteration: int,
     run_dir: str | Path,
+    *,
+    average_policy_value_target: float = KUHN_AVERAGE_POLICY_VALUE_TARGET,
 ) -> None:
     """Plot checkpoint exploitability and final checkpoint-vs-baseline deltas."""
     run_dir = Path(run_dir)
@@ -91,22 +100,12 @@ def plot_checkpoint_training_summary(
 
         fig, ax = plt.subplots(figsize=(8, 5))
         ax.errorbar(checkpoints, means, yerr=sems, marker="o", capsize=3, label="Checkpointed arm")
-        if baseline_rows:
-            base_values = np.asarray([row["exploitability_recomputed"] for row in baseline_rows], dtype=float)
-            base_mean = float(np.mean(base_values))
-            base_sem = (
-                float(np.std(base_values, ddof=1) / np.sqrt(len(base_values)))
-                if len(base_values) > 1
-                else 0.0
-            )
-            ax.axhline(base_mean, linestyle="--", linewidth=1.5, label="Continuous baseline mean")
-            ax.fill_between(
-                [min(checkpoints), max(checkpoints)],
-                base_mean - base_sem,
-                base_mean + base_sem,
-                alpha=0.15,
-                label="Continuous baseline +/- s.e.",
-            )
+        ax.axhline(
+            NASH_EXPLOITABILITY_TARGET,
+            linestyle="--",
+            linewidth=1,
+            label=NASH_EXPLOITABILITY_TARGET_LABEL,
+        )
         ax.set_xlabel("Checkpoint iteration")
         ax.set_ylabel("Exploitability (NashConv/2)")
         ax.set_title("Kuhn Poker ESCHER: Checkpoint Exploitability")
@@ -115,6 +114,40 @@ def plot_checkpoint_training_summary(
         fig.tight_layout()
         fig.savefig(
             run_dir / "checkpoint_exploitability_with_continuous_baseline.png",
+            dpi=200,
+            bbox_inches="tight",
+        )
+        plt.close(fig)
+
+        value_means = []
+        value_sems = []
+        for checkpoint in checkpoints:
+            values = np.asarray([
+                row["policy_value_recomputed"]
+                for row in checkpoint_rows
+                if row["checkpoint_iteration"] == checkpoint
+            ], dtype=float)
+            value_means.append(float(np.mean(values)))
+            value_sems.append(
+                float(np.std(values, ddof=1) / np.sqrt(len(values))) if len(values) > 1 else 0.0
+            )
+
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.errorbar(checkpoints, value_means, yerr=value_sems, marker="o", capsize=3, label="Checkpointed arm")
+        ax.axhline(
+            average_policy_value_target,
+            linestyle="--",
+            linewidth=1,
+            label=AVERAGE_POLICY_VALUE_TARGET_LABEL,
+        )
+        ax.set_xlabel("Checkpoint iteration")
+        ax.set_ylabel("Average policy value")
+        ax.set_title("Kuhn Poker ESCHER: Checkpoint Average Policy Value")
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(
+            run_dir / "checkpoint_average_policy_value_with_target.png",
             dpi=200,
             bbox_inches="tight",
         )
@@ -161,6 +194,7 @@ def plot_checkpoint_head_to_head_outputs(
     run_dir: str | Path,
     *,
     annotate_heatmap: bool = True,
+    average_policy_value_target: float = KUHN_AVERAGE_POLICY_VALUE_TARGET,
 ) -> None:
     """Create thesis plots for exact checkpoint head-to-head analysis."""
     run_dir = Path(run_dir)
@@ -234,20 +268,12 @@ def plot_checkpoint_head_to_head_outputs(
         y = np.asarray([row["exploitability_mean"] for row in aggregate], dtype=float)
         yerr = np.asarray([row["exploitability_sem"] for row in aggregate], dtype=float)
         ax.errorbar(x, y, yerr=yerr, marker="o", capsize=3, label="Checkpointed arm")
-        baseline_rows = analysis["final_checkpoint_vs_continuous_baseline"]
-        if baseline_rows:
-            base_values = np.asarray(
-                [row["continuous_baseline_exploitability"] for row in baseline_rows],
-                dtype=float,
-            )
-            base_mean = float(np.mean(base_values))
-            base_sem = (
-                float(np.std(base_values, ddof=1) / np.sqrt(len(base_values)))
-                if len(base_values) > 1
-                else 0.0
-            )
-            ax.axhline(base_mean, linestyle="--", linewidth=1.5, label="Continuous baseline mean")
-            ax.fill_between([x.min(), x.max()], base_mean - base_sem, base_mean + base_sem, alpha=0.15)
+        ax.axhline(
+            NASH_EXPLOITABILITY_TARGET,
+            linestyle="--",
+            linewidth=1,
+            label=NASH_EXPLOITABILITY_TARGET_LABEL,
+        )
         ax.set_xlabel("Checkpoint iteration")
         ax.set_ylabel("Exploitability")
         ax.set_title("ESCHER checkpoint exploitability over training")
@@ -255,6 +281,25 @@ def plot_checkpoint_head_to_head_outputs(
         ax.legend()
         fig.tight_layout()
         fig.savefig(run_dir / "checkpoint_exploitability_aggregate.png", dpi=200, bbox_inches="tight")
+        plt.close(fig)
+
+        fig, ax = plt.subplots(figsize=(9, 5))
+        y = np.asarray([row["policy_value_mean"] for row in aggregate], dtype=float)
+        yerr = np.asarray([row["policy_value_sem"] for row in aggregate], dtype=float)
+        ax.errorbar(x, y, yerr=yerr, marker="o", capsize=3, label="Checkpointed arm")
+        ax.axhline(
+            average_policy_value_target,
+            linestyle="--",
+            linewidth=1,
+            label=AVERAGE_POLICY_VALUE_TARGET_LABEL,
+        )
+        ax.set_xlabel("Checkpoint iteration")
+        ax.set_ylabel("Average policy value")
+        ax.set_title("ESCHER checkpoint average policy value over training")
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(run_dir / "checkpoint_average_policy_value_aggregate.png", dpi=200, bbox_inches="tight")
         plt.close(fig)
 
     strength_rows = analysis["head_to_head_strength_with_metrics"]

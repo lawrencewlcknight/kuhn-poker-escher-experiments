@@ -2,6 +2,10 @@
 
 
 def test_constants_importable():
-    from escher_poker.constants import KUHN_GAME_VALUE_PLAYER_0
+    from escher_poker.constants import (
+        KUHN_AVERAGE_POLICY_VALUE_TARGET,
+        KUHN_GAME_VALUE_PLAYER_0,
+    )
 
     assert KUHN_GAME_VALUE_PLAYER_0 == -1.0 / 18.0
+    assert KUHN_AVERAGE_POLICY_VALUE_TARGET == KUHN_GAME_VALUE_PLAYER_0

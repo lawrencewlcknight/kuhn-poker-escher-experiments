@@ -537,13 +537,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     ])
     _write_csv(run_dir / "checkpoint_stage_summary.csv", checkpoint_rows, [
         "seed", "arm", "checkpoint_iteration", "stage_index", "additional_updates",
-        "exploitability_recomputed", "policy_value_error_recomputed",
+        "exploitability_recomputed", "policy_value_recomputed", "policy_value_error_recomputed",
         "nodes_visited", "stage_wall_clock_seconds", "policy_snapshot_path",
         "full_checkpoint_path",
     ])
     _write_csv(run_dir / "continuous_baseline_summary.csv", baseline_rows, [
         "seed", "arm", "checkpoint_iteration", "exploitability_recomputed",
-        "policy_value_error_recomputed", "nodes_visited", "wall_clock_seconds",
+        "policy_value_recomputed", "policy_value_error_recomputed", "nodes_visited", "wall_clock_seconds",
         "policy_snapshot_path", "full_checkpoint_path",
     ])
 
@@ -552,6 +552,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         baseline_rows,
         final_iteration,
         run_dir,
+        average_policy_value_target=float(config["average_policy_value_target"]),
     )
 
     if args.run_analysis and args.save_policy_snapshots:
@@ -633,6 +634,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 args.equivalence_epsilon,
                 run_dir,
                 annotate_heatmap=args.annotate_heatmap,
+                average_policy_value_target=float(config["average_policy_value_target"]),
             )
 
     _LOGGER.info("Saved outputs to: %s", run_dir.resolve())

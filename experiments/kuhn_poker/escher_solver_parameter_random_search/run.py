@@ -27,7 +27,12 @@ import pyspiel  # noqa: E402
 import tensorflow as tf  # noqa: E402
 from tqdm import tqdm  # noqa: E402
 
-from escher_poker.constants import EXPLOITABILITY_THRESHOLD, KUHN_GAME_VALUE_PLAYER_0  # noqa: E402
+from escher_poker.constants import (  # noqa: E402
+    AVERAGE_POLICY_VALUE_TARGET_LABEL,
+    KUHN_GAME_VALUE_PLAYER_0,
+    NASH_EXPLOITABILITY_TARGET,
+    NASH_EXPLOITABILITY_TARGET_LABEL,
+)
 from escher_poker.experiment_utils import create_run_dir, json_safe  # noqa: E402
 from escher_poker.hyperparameter_search import (  # noqa: E402
     aggregate_summaries,
@@ -294,7 +299,11 @@ def _plot_stage_curves(results: List[Dict[str, Any]], stage_name: str, run_dir: 
             continue
         mean = np.nanmean(ymat, axis=0)
         ax.plot(xs, mean, linewidth=2, label=variant_id)
-    ax.axhline(EXPLOITABILITY_THRESHOLD, linestyle="--", label="Exploitability threshold")
+    ax.axhline(
+        NASH_EXPLOITABILITY_TARGET,
+        linestyle="--",
+        label=NASH_EXPLOITABILITY_TARGET_LABEL,
+    )
     ax.set_xlabel("Training iteration")
     ax.set_ylabel("Exploitability (NashConv/2)")
     ax.set_title(f"ESCHER Solver-Parameter Random Search: {stage_name.title()} Exploitability")
@@ -311,7 +320,11 @@ def _plot_stage_curves(results: List[Dict[str, Any]], stage_name: str, run_dir: 
         if np.all(~np.isfinite(xmat)) or np.all(~np.isfinite(ymat)):
             continue
         ax.plot(np.nanmean(xmat, axis=0), np.nanmean(ymat, axis=0), linewidth=2, label=variant_id)
-    ax.axhline(EXPLOITABILITY_THRESHOLD, linestyle="--", label="Exploitability threshold")
+    ax.axhline(
+        NASH_EXPLOITABILITY_TARGET,
+        linestyle="--",
+        label=NASH_EXPLOITABILITY_TARGET_LABEL,
+    )
     ax.set_xlabel("Nodes touched")
     ax.set_ylabel("Exploitability (NashConv/2)")
     ax.set_title(f"ESCHER Solver-Parameter Random Search: {stage_name.title()} Exploitability by Nodes")
@@ -319,6 +332,49 @@ def _plot_stage_curves(results: List[Dict[str, Any]], stage_name: str, run_dir: 
     ax.legend(fontsize=8)
     fig.tight_layout()
     fig.savefig(run_dir / f"{stage_name}_exploitability_by_nodes.png", dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for variant_id, variant_results in grouped.items():
+        xs = variant_results[0]["iterations"]
+        ymat = np.vstack([result["average_policy_value"] for result in variant_results])
+        if np.all(~np.isfinite(ymat)):
+            continue
+        mean = np.nanmean(ymat, axis=0)
+        ax.plot(xs, mean, linewidth=2, label=variant_id)
+    ax.axhline(
+        float(DEFAULT_CONFIG["average_policy_value_target"]),
+        linestyle="--",
+        label=AVERAGE_POLICY_VALUE_TARGET_LABEL,
+    )
+    ax.set_xlabel("Training iteration")
+    ax.set_ylabel("Average policy value")
+    ax.set_title(f"ESCHER Solver-Parameter Random Search: {stage_name.title()} Average Policy Value")
+    ax.grid(True)
+    ax.legend(fontsize=8)
+    fig.tight_layout()
+    fig.savefig(run_dir / f"{stage_name}_average_policy_value_by_iteration.png", dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for variant_id, variant_results in grouped.items():
+        xmat = np.vstack([result["nodes_touched"] for result in variant_results])
+        ymat = np.vstack([result["average_policy_value"] for result in variant_results])
+        if np.all(~np.isfinite(xmat)) or np.all(~np.isfinite(ymat)):
+            continue
+        ax.plot(np.nanmean(xmat, axis=0), np.nanmean(ymat, axis=0), linewidth=2, label=variant_id)
+    ax.axhline(
+        float(DEFAULT_CONFIG["average_policy_value_target"]),
+        linestyle="--",
+        label=AVERAGE_POLICY_VALUE_TARGET_LABEL,
+    )
+    ax.set_xlabel("Nodes touched")
+    ax.set_ylabel("Average policy value")
+    ax.set_title(f"ESCHER Solver-Parameter Random Search: {stage_name.title()} Average Policy Value by Nodes")
+    ax.grid(True)
+    ax.legend(fontsize=8)
+    fig.tight_layout()
+    fig.savefig(run_dir / f"{stage_name}_average_policy_value_by_nodes.png", dpi=200, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -339,6 +395,22 @@ def _plot_final_metric_bars(
     ses = [row[f"{metric}_se"] for row in aggregate]
     fig, ax = plt.subplots(figsize=(max(8, 0.8 * len(labels)), 5))
     ax.bar(labels, means, yerr=ses, capsize=3)
+    if metric in {"final_exploitability", "best_exploitability", "final_window_mean_exploitability"}:
+        ax.axhline(
+            NASH_EXPLOITABILITY_TARGET,
+            linestyle="--",
+            linewidth=1,
+            label=NASH_EXPLOITABILITY_TARGET_LABEL,
+        )
+        ax.legend(fontsize=8)
+    if metric in {"final_policy_value", "best_policy_value", "final_window_mean_policy_value"}:
+        ax.axhline(
+            float(DEFAULT_CONFIG["average_policy_value_target"]),
+            linestyle="--",
+            linewidth=1,
+            label=AVERAGE_POLICY_VALUE_TARGET_LABEL,
+        )
+        ax.legend(fontsize=8)
     ax.set_ylabel(ylabel)
     ax.set_xlabel("Variant")
     ax.set_title(f"ESCHER Solver-Parameter Random Search: {stage_name.title()} {ylabel}")
@@ -450,11 +522,27 @@ def _plot_outputs(
         run_dir,
     )
     _plot_final_metric_bars(
+        screening_summary_rows,
+        "screening",
+        "final_policy_value",
+        "Final average policy value",
+        "screening_final_average_policy_value_by_variant.png",
+        run_dir,
+    )
+    _plot_final_metric_bars(
         confirmation_summary_rows,
         "confirmation",
         "final_exploitability",
         "Final exploitability",
         "confirmation_final_exploitability_by_variant.png",
+        run_dir,
+    )
+    _plot_final_metric_bars(
+        confirmation_summary_rows,
+        "confirmation",
+        "final_policy_value",
+        "Final average policy value",
+        "confirmation_final_average_policy_value_by_variant.png",
         run_dir,
     )
     _plot_final_metric_bars(
@@ -590,26 +678,30 @@ def main(argv: Optional[List[str]] = None) -> int:
     _write_csv(run_dir / "screening_seed_summary.csv", screening_summary_rows, [
         "stage", "variant_id", "seed", "status", "final_exploitability",
         "best_exploitability", "final_window_mean_exploitability", "exploitability_auc",
+        "final_policy_value",
     ])
     _write_csv(run_dir / "screening_aggregate_by_variant.csv", screening_aggregate_rows, [
         "variant_id", "final_exploitability_mean", "final_window_mean_exploitability_mean",
-        "exploitability_auc_mean", "n_runs", "n_completed",
+        "exploitability_auc_mean", "final_policy_value_mean", "n_runs", "n_completed",
     ])
     _write_csv(run_dir / "confirmation_seed_summary.csv", confirmation_summary_rows, [
         "stage", "variant_id", "seed", "status", "final_exploitability",
         "best_exploitability", "final_window_mean_exploitability", "exploitability_auc",
+        "final_policy_value",
     ])
     _write_csv(run_dir / "confirmation_aggregate_by_variant.csv", confirmation_aggregate_rows, [
         "variant_id", "final_exploitability_mean", "final_window_mean_exploitability_mean",
-        "exploitability_auc_mean", "n_runs", "n_completed",
+        "exploitability_auc_mean", "final_policy_value_mean", "n_runs", "n_completed",
     ])
     _write_csv(run_dir / "confirmation_paired_differences_vs_baseline.csv", paired_rows, [
         "variant_id", "seed", "delta_final_exploitability",
         "delta_final_window_mean_exploitability", "delta_exploitability_auc",
+        "delta_final_policy_value",
     ])
     _write_csv(run_dir / "confirmation_paired_difference_summary.csv", paired_aggregate_rows, [
         "variant_id", "delta_final_exploitability_mean",
         "delta_final_window_mean_exploitability_mean", "delta_exploitability_auc_mean",
+        "delta_final_policy_value_mean",
     ])
     screening_curve_rows = _curve_rows(screening_results)
     confirmation_curve_rows = _curve_rows(confirmation_results)

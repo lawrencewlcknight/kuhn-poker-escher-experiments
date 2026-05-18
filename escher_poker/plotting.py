@@ -9,7 +9,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import stats
 
-from .constants import EXPLOITABILITY_THRESHOLD
+from .constants import (
+    AVERAGE_POLICY_VALUE_TARGET_LABEL,
+    KUHN_AVERAGE_POLICY_VALUE_TARGET,
+    NASH_EXPLOITABILITY_TARGET,
+    NASH_EXPLOITABILITY_TARGET_LABEL,
+)
 
 
 def _stack_curve(results: List[Dict[str, Any]], key: str) -> np.ndarray:
@@ -22,16 +27,24 @@ def _safe_sem(matrix: np.ndarray) -> np.ndarray:
     return stats.sem(matrix, axis=0, nan_policy="omit")
 
 
-def plot_multiseed_results(results: List[Dict[str, Any]], run_dir: str | Path) -> None:
+def plot_multiseed_results(
+    results: List[Dict[str, Any]],
+    run_dir: str | Path,
+    *,
+    average_policy_value_target: float = KUHN_AVERAGE_POLICY_VALUE_TARGET,
+) -> None:
     """Create thesis-style plots matching the Deep CFR repo look and feel."""
     run_dir = Path(run_dir)
     iterations = np.asarray(results[0]["iterations"], dtype=np.float64)
     exploitability_mat = _stack_curve(results, "exploitability")
+    average_policy_value_mat = _stack_curve(results, "average_policy_value")
     value_error_mat = _stack_curve(results, "policy_value_error")
     nodes_mat = _stack_curve(results, "nodes_touched")
 
     mean_exploitability = np.mean(exploitability_mat, axis=0)
     se_exploitability = _safe_sem(exploitability_mat)
+    mean_average_policy_value = np.mean(average_policy_value_mat, axis=0)
+    se_average_policy_value = _safe_sem(average_policy_value_mat)
     mean_value_error = np.mean(value_error_mat, axis=0)
     se_value_error = _safe_sem(value_error_mat)
     mean_nodes = np.mean(nodes_mat, axis=0)
@@ -47,7 +60,11 @@ def plot_multiseed_results(results: List[Dict[str, Any]], run_dir: str | Path) -
         alpha=0.2,
         label="Mean $\\pm$ s.e.",
     )
-    ax.axhline(EXPLOITABILITY_THRESHOLD, linestyle="--", label="Exploitability threshold")
+    ax.axhline(
+        NASH_EXPLOITABILITY_TARGET,
+        linestyle="--",
+        label=NASH_EXPLOITABILITY_TARGET_LABEL,
+    )
     ax.set_xlabel("Training iteration")
     ax.set_ylabel("Exploitability (NashConv/2)")
     ax.set_title("Kuhn Poker ESCHER: Exploitability Across Seeds")
@@ -55,6 +72,31 @@ def plot_multiseed_results(results: List[Dict[str, Any]], run_dir: str | Path) -
     ax.legend()
     fig.tight_layout()
     fig.savefig(run_dir / "exploitability_by_iteration_multiseed.png", dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for result in results:
+        ax.plot(result["iterations"], result["average_policy_value"], alpha=0.25, linewidth=1)
+    ax.plot(iterations, mean_average_policy_value, linewidth=2, label="Mean across seeds")
+    ax.fill_between(
+        iterations,
+        mean_average_policy_value - se_average_policy_value,
+        mean_average_policy_value + se_average_policy_value,
+        alpha=0.2,
+        label="Mean $\\pm$ s.e.",
+    )
+    ax.axhline(
+        average_policy_value_target,
+        linestyle="--",
+        label=AVERAGE_POLICY_VALUE_TARGET_LABEL,
+    )
+    ax.set_xlabel("Training iteration")
+    ax.set_ylabel("Average policy value")
+    ax.set_title("Kuhn Poker ESCHER: Average Policy Value Across Seeds")
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(run_dir / "average_policy_value_by_iteration_multiseed.png", dpi=200, bbox_inches="tight")
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -68,7 +110,11 @@ def plot_multiseed_results(results: List[Dict[str, Any]], run_dir: str | Path) -
         alpha=0.2,
         label="Mean $\\pm$ s.e.",
     )
-    ax.axhline(EXPLOITABILITY_THRESHOLD, linestyle="--", label="Exploitability threshold")
+    ax.axhline(
+        NASH_EXPLOITABILITY_TARGET,
+        linestyle="--",
+        label=NASH_EXPLOITABILITY_TARGET_LABEL,
+    )
     ax.set_xlabel("Nodes touched")
     ax.set_ylabel("Exploitability (NashConv/2)")
     ax.set_title("Kuhn Poker ESCHER: Exploitability by Nodes Touched")
@@ -76,6 +122,31 @@ def plot_multiseed_results(results: List[Dict[str, Any]], run_dir: str | Path) -
     ax.legend()
     fig.tight_layout()
     fig.savefig(run_dir / "exploitability_by_nodes_multiseed.png", dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for result in results:
+        ax.plot(result["nodes_touched"], result["average_policy_value"], alpha=0.25, linewidth=1)
+    ax.plot(mean_nodes, mean_average_policy_value, linewidth=2, label="Mean across seeds")
+    ax.fill_between(
+        mean_nodes,
+        mean_average_policy_value - se_average_policy_value,
+        mean_average_policy_value + se_average_policy_value,
+        alpha=0.2,
+        label="Mean $\\pm$ s.e.",
+    )
+    ax.axhline(
+        average_policy_value_target,
+        linestyle="--",
+        label=AVERAGE_POLICY_VALUE_TARGET_LABEL,
+    )
+    ax.set_xlabel("Nodes touched")
+    ax.set_ylabel("Average policy value")
+    ax.set_title("Kuhn Poker ESCHER: Average Policy Value by Nodes Touched")
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(run_dir / "average_policy_value_by_nodes_multiseed.png", dpi=200, bbox_inches="tight")
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(8, 5))

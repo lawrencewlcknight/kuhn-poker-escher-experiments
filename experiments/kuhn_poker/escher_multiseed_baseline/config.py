@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from escher_poker.constants import EXPLOITABILITY_THRESHOLD
+from escher_poker.constants import EXPLOITABILITY_THRESHOLD, KUHN_AVERAGE_POLICY_VALUE_TARGET
 
 DEFAULT_CONFIG = {
     "experiment_name": "kuhn_poker_escher_multiseed_baseline",
@@ -34,6 +34,7 @@ DEFAULT_CONFIG = {
     "infer_device": "cpu",
     "verbose": False,
     "exploitability_threshold": EXPLOITABILITY_THRESHOLD,
+    "average_policy_value_target": KUHN_AVERAGE_POLICY_VALUE_TARGET,
 }
 
 DEFAULT_SEEDS = [1234, 2025, 31415, 27182, 16180, 4242, 8675309, 7, 99, 1001]

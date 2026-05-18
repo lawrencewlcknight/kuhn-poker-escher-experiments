@@ -9,7 +9,12 @@ from typing import Any, Dict, Iterable, List
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .constants import EXPLOITABILITY_THRESHOLD
+from .constants import (
+    AVERAGE_POLICY_VALUE_TARGET_LABEL,
+    KUHN_AVERAGE_POLICY_VALUE_TARGET,
+    NASH_EXPLOITABILITY_TARGET,
+    NASH_EXPLOITABILITY_TARGET_LABEL,
+)
 from .experiment_utils import safe_stats
 
 
@@ -53,6 +58,8 @@ def plot_mean_bar(
     ylabel: str,
     title: str,
     output_path: str | Path,
+    *,
+    average_policy_value_target: float = KUHN_AVERAGE_POLICY_VALUE_TARGET,
 ) -> None:
     """Plot variant means with standard-error bars."""
     rows = _metric_stats_by_variant(summary_rows, variants, metric)
@@ -65,6 +72,22 @@ def plot_mean_bar(
 
     fig, ax = plt.subplots(figsize=(9, 5))
     ax.bar(labels, means, yerr=errors, capsize=4)
+    if metric in {"final_exploitability", "best_exploitability", "final_window_mean_exploitability"}:
+        ax.axhline(
+            NASH_EXPLOITABILITY_TARGET,
+            linestyle="--",
+            linewidth=1,
+            label=NASH_EXPLOITABILITY_TARGET_LABEL,
+        )
+        ax.legend()
+    if metric in {"final_policy_value", "best_policy_value", "final_window_mean_policy_value"}:
+        ax.axhline(
+            average_policy_value_target,
+            linestyle="--",
+            linewidth=1,
+            label=AVERAGE_POLICY_VALUE_TARGET_LABEL,
+        )
+        ax.legend()
     ax.set_ylabel(ylabel)
     ax.set_xlabel("Variant")
     ax.set_title(title)
@@ -126,12 +149,15 @@ def _mean_curve_rows(curve_rows: Iterable[Dict[str, Any]]) -> List[Dict[str, flo
     for iteration in sorted(grouped):
         rows = grouped[iteration]
         exploitability_values = [row["exploitability"] for row in rows]
+        average_policy_values = [row["average_policy_value"] for row in rows]
         value_error_values = [row["policy_value_error"] for row in rows]
         mean_rows.append({
             "iteration": float(iteration),
             "nodes_touched": float(np.mean([row["nodes_touched"] for row in rows])),
             "exploitability_mean": safe_stats(exploitability_values)["mean"],
             "exploitability_se": safe_stats(exploitability_values)["se"],
+            "average_policy_value_mean": safe_stats(average_policy_values)["mean"],
+            "average_policy_value_se": safe_stats(average_policy_values)["se"],
             "policy_value_error_mean": safe_stats(value_error_values)["mean"],
             "policy_value_error_se": safe_stats(value_error_values)["se"],
         })
@@ -142,6 +168,8 @@ def plot_reference_intermediate_curves(
     curve_rows: List[Dict[str, Any]],
     reference_variant_id: str,
     run_dir: str | Path,
+    *,
+    average_policy_value_target: float = KUHN_AVERAGE_POLICY_VALUE_TARGET,
 ) -> None:
     """Plot intermediate exploitability/value-error curves for the reference arm."""
     run_dir = Path(run_dir)
@@ -165,10 +193,10 @@ def plot_reference_intermediate_curves(
     ax.plot(iterations, means, marker="o", label="Mean exploitability")
     ax.fill_between(iterations, means - errors, means + errors, alpha=0.2, label="Mean +/- s.e.")
     ax.axhline(
-        EXPLOITABILITY_THRESHOLD,
+        NASH_EXPLOITABILITY_TARGET,
         linestyle="--",
         linewidth=1,
-        label="Exploitability threshold",
+        label=NASH_EXPLOITABILITY_TARGET_LABEL,
     )
     ax.set_xlabel("ESCHER iteration")
     ax.set_ylabel("Exploitability")
@@ -178,6 +206,30 @@ def plot_reference_intermediate_curves(
     fig.tight_layout()
     fig.savefig(
         run_dir / "baseline_intermediate_exploitability_curve.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    means = np.asarray([row["average_policy_value_mean"] for row in grouped], dtype=float)
+    errors = np.asarray([row["average_policy_value_se"] for row in grouped], dtype=float)
+    ax.plot(iterations, means, marker="o", label="Mean average policy value")
+    ax.fill_between(iterations, means - errors, means + errors, alpha=0.2, label="Mean +/- s.e.")
+    ax.axhline(
+        average_policy_value_target,
+        linestyle="--",
+        linewidth=1,
+        label=AVERAGE_POLICY_VALUE_TARGET_LABEL,
+    )
+    ax.set_xlabel("ESCHER iteration")
+    ax.set_ylabel("Average policy value")
+    ax.set_title("ESCHER baseline: intermediate average policy value")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(
+        run_dir / "baseline_intermediate_average_policy_value_curve.png",
         dpi=300,
         bbox_inches="tight",
     )
@@ -209,6 +261,8 @@ def plot_policy_training_ablation(
     variants: List[Dict[str, Any]],
     reference_variant_id: str,
     run_dir: str | Path,
+    *,
+    average_policy_value_target: float = KUHN_AVERAGE_POLICY_VALUE_TARGET,
 ) -> None:
     """Create the standard thesis plots for policy-training ablations."""
     run_dir = Path(run_dir)
@@ -219,6 +273,15 @@ def plot_policy_training_ablation(
         "Mean final exploitability",
         "ESCHER: final exploitability by policy-training regime",
         run_dir / "final_exploitability_by_variant.png",
+    )
+    plot_mean_bar(
+        summary_rows,
+        variants,
+        "final_policy_value",
+        "Mean final average policy value",
+        "ESCHER: final average policy value by policy-training regime",
+        run_dir / "final_average_policy_value_by_variant.png",
+        average_policy_value_target=average_policy_value_target,
     )
     plot_mean_bar(
         summary_rows,
@@ -252,4 +315,9 @@ def plot_policy_training_ablation(
         "ESCHER: paired final-exploitability difference versus baseline",
         run_dir / "paired_delta_final_exploitability_vs_baseline.png",
     )
-    plot_reference_intermediate_curves(curve_rows, reference_variant_id, run_dir)
+    plot_reference_intermediate_curves(
+        curve_rows,
+        reference_variant_id,
+        run_dir,
+        average_policy_value_target=average_policy_value_target,
+    )

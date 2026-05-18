@@ -12,12 +12,18 @@ The ESCHER baseline currently produces:
 
 - `exploitability_by_iteration_multiseed.png`
 - `exploitability_by_nodes_multiseed.png`
+- `average_policy_value_by_iteration_multiseed.png`
+- `average_policy_value_by_nodes_multiseed.png`
 - `policy_value_error_multiseed.png`
 - `policy_loss_diagnostic.png`
 - `regret_loss_diagnostic.png`
 - `value_loss_diagnostic.png`
 
 Future ablations should preserve these outputs where the metrics are meaningful.
+Average-policy-value plots should use the configured
+`average_policy_value_target` from the experiment config. For Kuhn poker this is
+player 0's Nash equilibrium value, `-1/18`, approximately `-0.0555`; Leduc or
+other games should override it in their baseline config.
 
 For multi-arm ablations, use the same common filenames with a `variant_id` column:
 
@@ -30,6 +36,7 @@ For multi-arm ablations, use the same common filenames with a `variant_id` colum
 Plot filenames should describe the comparison plainly, for example:
 
 - `final_exploitability_by_variant.png`
+- `final_average_policy_value_by_variant.png`
 - `final_policy_value_error_by_variant.png`
 - `runtime_by_variant.png`
 - `paired_delta_final_exploitability_vs_baseline.png`
@@ -41,6 +48,7 @@ For checkpoint-stability experiments, keep the training and exact head-to-head a
 - `continuous_baseline_summary.csv` — one row per seed for the uninterrupted baseline arm.
 - `snapshot_inventory.csv` and `loaded_policy_inventory.csv` — saved playable policy artifacts.
 - `checkpoint_exploitability_metrics.csv` — exact exploitability and policy-value metrics by checkpoint.
+- `checkpoint_average_policy_value_with_target.png` — checkpoint policy-value curve with the configured Nash value target.
 - `head_to_head_exact_pairwise.csv` — exact seat-averaged EV for every ordered checkpoint pair.
 - `head_to_head_exact_mean_matrix.csv` — mean EV matrix across seeds.
 - `head_to_head_seed_win_fraction_matrix.csv` — fraction of seeds where the row checkpoint clearly beats the column checkpoint.
@@ -58,6 +66,8 @@ For constrained hyperparameter-search experiments, keep screening and confirmati
 - `confirmation_paired_differences_vs_baseline.csv` — matched-seed deltas relative to the ESCHER baseline.
 - `confirmation_paired_difference_summary.csv` — aggregate paired deltas.
 - `checkpoint_curves.csv` — one row per evaluation checkpoint across both stages.
+- `screening_average_policy_value_by_iteration.png` and `confirmation_average_policy_value_by_iteration.png` — stage-level policy-value curves with the configured Nash value target.
+- `screening_final_average_policy_value_by_variant.png` and `confirmation_final_average_policy_value_by_variant.png` — final policy-value summaries.
 - `aggregate_summary.json` — JSON form of screening, confirmation, and paired summaries.
 
 For solver-parameter random-search experiments, keep the same two-stage search structure and preserve sampled-configuration metadata:
@@ -70,6 +80,8 @@ For solver-parameter random-search experiments, keep the same two-stage search s
 - `confirmation_paired_difference_summary.csv` — aggregate paired deltas.
 - `checkpoint_curves.csv` — one row per evaluation checkpoint across both stages.
 - `screening_checkpoint_curves.csv` and `confirmation_checkpoint_curves.csv` — stage-specific checkpoint exports.
+- `screening_average_policy_value_by_iteration.png` and `confirmation_average_policy_value_by_iteration.png` — stage-level policy-value curves with the configured Nash value target.
+- `screening_final_average_policy_value_by_variant.png` and `confirmation_final_average_policy_value_by_variant.png` — final policy-value summaries.
 - `aggregate_summary.json` — JSON form of screening, confirmation, and paired summaries.
 - `experiment_metadata.json` — baseline config, random-search seed, sampled configs, selected variants, and versions.
 - `solver_parameter_random_search_curves.npz` — compact NumPy export for thesis plotting.
@@ -81,6 +93,7 @@ For warm-start/checkpoint-resume ablations, keep both arms and the saved boundar
 - `paired_summary.csv` — matched-seed warm-start minus continuous-baseline deltas.
 - `paired_aggregate_summary.csv` — aggregate paired-difference statistics.
 - `checkpoint_curves.csv` — long-form diagnostic curves for both arms.
+- `warm_start_average_policy_value_by_iteration.png` and `warm_start_average_policy_value_by_nodes.png` — policy-value curves with the configured Nash value target.
 - `paired_checkpoint_differences.csv` — matched-checkpoint warm-start minus baseline curve deltas.
 - `warm_start_fair_ablation_curves.npz` — compact NumPy export for thesis plotting.
 - `checkpoints/` — saved full solver states at the warm-start boundary.
@@ -92,6 +105,8 @@ For learning-rate schedule ablations, use schedule identifiers consistently and 
 - `paired_differences_vs_baseline.csv` — matched-seed deltas relative to `constant_baseline_escher`.
 - `paired_difference_summary.csv` — aggregate paired deltas by schedule and metric.
 - `checkpoint_curves.csv` — one row per checkpoint with `schedule`, `seed`, and `learning_rate`.
+- `lr_schedule_average_policy_value_by_iteration.png` and `lr_schedule_average_policy_value_by_nodes.png` — policy-value curves with the configured Nash value target.
+- `lr_schedule_final_average_policy_value_by_schedule.png` — final policy-value summary.
 - `aggregate_summary.json` — JSON form of schedule and paired summaries.
 - `lr_schedule_curves.npz` — compact NumPy export for thesis plotting.
 
@@ -102,6 +117,7 @@ For average-policy reach-weighting ablations, preserve the multi-arm ablation fi
 - `paired_differences_vs_baseline.csv` — matched-seed reach-weighted minus iteration-only deltas.
 - `paired_difference_summary.csv` and `paired_difference_summary.json` — aggregate paired deltas.
 - `checkpoint_curves.csv` — one row per checkpoint per variant/seed.
+- `average_policy_value_by_iteration_reach_ablation.png`, `average_policy_value_by_nodes_reach_ablation.png`, and `final_average_policy_value_reach_ablation.png` — policy-value plots with the configured Nash value target.
 - `aggregate_summary.json` — JSON form of variant and paired summaries.
 - `reach_weighting_ablation_curves.npz` — compact NumPy export for thesis plotting.
 
@@ -112,6 +128,7 @@ For value-trajectory reuse ablations, preserve paired baseline/treatment outputs
 - `paired_differences_vs_baseline.csv` — matched-seed reuse minus dedicated-value-traversal deltas.
 - `paired_difference_summary.csv` and `paired_difference_summary.json` — aggregate paired deltas.
 - `checkpoint_curves.csv` — one row per checkpoint per variant/seed.
+- `average_policy_value_by_iteration_reuse_ablation.png`, `average_policy_value_by_nodes_reuse_ablation.png`, and `final_average_policy_value_reuse_ablation.png` — policy-value plots with the configured Nash value target.
 - `aggregate_summary.json` — JSON form of variant and paired summaries.
 - `reuse_value_trajectory_ablation_curves.npz` — compact NumPy export for thesis plotting.
 
@@ -122,6 +139,7 @@ For disk-backed regret-memory ablations, preserve paired baseline/treatment outp
 - `paired_differences_vs_baseline.csv` — matched-seed disk-backed minus in-memory deltas.
 - `paired_difference_summary.csv` and `paired_difference_summary.json` — aggregate paired deltas.
 - `checkpoint_curves.csv` — one row per checkpoint per variant/seed, including regret storage bytes and peak RSS.
+- `average_policy_value_by_iteration_regret_memory_ablation.png`, `average_policy_value_by_nodes_regret_memory_ablation.png`, and `final_average_policy_value_regret_memory_ablation.png` — policy-value plots with the configured Nash value target.
 - `aggregate_summary.json` — JSON form of variant and paired summaries.
 - `regret_memory_ablation_curves.npz` — compact NumPy export for thesis plotting.
 - `replay/` — disk-backed replay artifacts used by the run.
@@ -133,6 +151,7 @@ For on-policy joint-regret ablations, preserve paired baseline/treatment outputs
 - `paired_differences_vs_baseline.csv` — matched-seed on-policy minus separate-player-regret-update deltas.
 - `paired_difference_summary.csv` and `paired_difference_summary.json` — aggregate paired deltas.
 - `checkpoint_curves.csv` — one row per checkpoint per variant/seed.
+- `average_policy_value_by_iteration_on_policy_ablation.png`, `average_policy_value_by_nodes_on_policy_ablation.png`, and `final_average_policy_value_on_policy_ablation.png` — policy-value plots with the configured Nash value target.
 - `aggregate_summary.json` — JSON form of variant and paired summaries.
 - `on_policy_joint_regret_ablation_curves.npz` — compact NumPy export for thesis plotting.
 - `nominal_regret_traversals_by_variant.png` — nominal regret-data generation budget comparison.

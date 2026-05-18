@@ -58,6 +58,7 @@ AGGREGATE_METRICS = [
     "best_exploitability",
     "final_window_mean_exploitability",
     "exploitability_auc",
+    "final_policy_value",
     "final_policy_value_error",
     "final_nodes_touched",
     "final_wall_clock_seconds",
@@ -383,6 +384,9 @@ def paired_differences_vs_baseline(
             ),
             "delta_exploitability_auc": (
                 row["exploitability_auc"] - baseline_row["exploitability_auc"]
+            ),
+            "delta_final_policy_value": (
+                row["final_policy_value"] - baseline_row["final_policy_value"]
             ),
             "delta_policy_value_error": (
                 row["final_policy_value_error"] - baseline_row["final_policy_value_error"]

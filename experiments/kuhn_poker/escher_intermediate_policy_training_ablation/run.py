@@ -54,6 +54,7 @@ _LOGGER = logging.getLogger("escher_poker.experiment")
 
 METRICS_TO_SUMMARISE = [
     "final_exploitability",
+    "final_policy_value",
     "final_policy_value_error",
     "intermediate_final_exploitability",
     "intermediate_best_exploitability",
@@ -68,6 +69,7 @@ METRICS_TO_SUMMARISE = [
 
 PAIRED_METRICS = [
     "delta_final_exploitability_vs_baseline",
+    "delta_final_policy_value_vs_baseline",
     "delta_final_policy_value_error_vs_baseline",
     "delta_elapsed_seconds_vs_baseline",
     "delta_policy_gradient_steps_vs_baseline",
@@ -218,6 +220,9 @@ def _paired_differences(summary_rows: List[Dict[str, Any]]) -> List[Dict[str, An
                 "seed": int(seed),
                 "delta_final_exploitability_vs_baseline": float(
                     variant["final_exploitability"] - reference["final_exploitability"]
+                ),
+                "delta_final_policy_value_vs_baseline": float(
+                    variant["final_policy_value"] - reference["final_policy_value"]
                 ),
                 "delta_final_policy_value_error_vs_baseline": float(
                     variant["final_policy_value_error"] - reference["final_policy_value_error"]
@@ -423,6 +428,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         variants,
         REFERENCE_VARIANT_ID,
         run_dir,
+        average_policy_value_target=float(base_config["average_policy_value_target"]),
     )
 
     _LOGGER.info("Saved all outputs to: %s", run_dir.resolve())

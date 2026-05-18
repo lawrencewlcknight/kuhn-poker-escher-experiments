@@ -323,6 +323,8 @@ def analyze_checkpoint_snapshots(
             ]),
             "exploitability_mean": _mean([row.get("exploitability", np.nan) for row in rows]),
             "exploitability_sem": _safe_sem([row.get("exploitability", np.nan) for row in rows]),
+            "policy_value_mean": _mean([row.get("policy_value", np.nan) for row in rows]),
+            "policy_value_sem": _safe_sem([row.get("policy_value", np.nan) for row in rows]),
             "policy_value_error_mean": _mean([
                 row.get("policy_value_error", np.nan) for row in rows
             ]),
@@ -357,6 +359,11 @@ def analyze_checkpoint_snapshots(
             "continuous_baseline_exploitability": float(base_metrics["exploitability"]),
             "delta_exploitability_checkpointed_minus_baseline": float(
                 ckpt_metrics["exploitability"] - base_metrics["exploitability"]
+            ),
+            "checkpointed_final_policy_value": float(ckpt_metrics["policy_value"]),
+            "continuous_baseline_policy_value": float(base_metrics["policy_value"]),
+            "delta_policy_value_checkpointed_minus_baseline": float(
+                ckpt_metrics["policy_value"] - base_metrics["policy_value"]
             ),
             "checkpointed_final_policy_value_error": float(
                 ckpt_metrics["policy_value_error"]

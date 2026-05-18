@@ -31,7 +31,12 @@ from open_spiel.python import policy  # noqa: E402
 from open_spiel.python.algorithms import exploitability, expected_game_score  # noqa: E402
 from tqdm import tqdm  # noqa: E402
 
-from escher_poker.constants import EXPLOITABILITY_THRESHOLD, KUHN_GAME_VALUE_PLAYER_0  # noqa: E402
+from escher_poker.constants import (  # noqa: E402
+    AVERAGE_POLICY_VALUE_TARGET_LABEL,
+    KUHN_GAME_VALUE_PLAYER_0,
+    NASH_EXPLOITABILITY_TARGET,
+    NASH_EXPLOITABILITY_TARGET_LABEL,
+)
 from escher_poker.experiment_utils import (  # noqa: E402
     create_run_dir,
     final_window_mean,
@@ -60,6 +65,7 @@ SUMMARY_METRICS = [
     "final_exploitability",
     "best_exploitability",
     "final_window_mean_exploitability",
+    "final_policy_value",
     "final_policy_value_error",
     "best_policy_value_error",
     "exploitability_auc_by_iteration",
@@ -80,6 +86,7 @@ PAIRED_METRICS = [
     "delta_final_exploitability_disk_minus_baseline",
     "delta_best_exploitability_disk_minus_baseline",
     "delta_final_window_mean_exploitability_disk_minus_baseline",
+    "delta_final_policy_value_disk_minus_baseline",
     "delta_final_policy_value_error_disk_minus_baseline",
     "delta_exploitability_auc_by_iteration_disk_minus_baseline",
     "delta_exploitability_auc_by_nodes_disk_minus_baseline",
@@ -393,6 +400,9 @@ def _paired_differences(summary_rows: List[Dict[str, Any]]) -> List[Dict[str, An
                 treatment["final_window_mean_exploitability"]
                 - baseline["final_window_mean_exploitability"]
             ),
+            "delta_final_policy_value_disk_minus_baseline": float(
+                treatment["final_policy_value"] - baseline["final_policy_value"]
+            ),
             "delta_final_policy_value_error_disk_minus_baseline": float(
                 treatment["final_policy_value_error"]
                 - baseline["final_policy_value_error"]
@@ -487,7 +497,19 @@ def _plot_curve(
         ax.plot(x, mean, linewidth=2, label=_variant_label(variant_id))
         ax.fill_between(x, mean - se, mean + se, alpha=0.15)
     if metric == "exploitability":
-        ax.axhline(EXPLOITABILITY_THRESHOLD, linestyle="--", linewidth=1)
+        ax.axhline(
+            NASH_EXPLOITABILITY_TARGET,
+            linestyle="--",
+            linewidth=1,
+            label=NASH_EXPLOITABILITY_TARGET_LABEL,
+        )
+    if metric == "average_policy_value":
+        ax.axhline(
+            float(DEFAULT_CONFIG["average_policy_value_target"]),
+            linestyle="--",
+            linewidth=1,
+            label=AVERAGE_POLICY_VALUE_TARGET_LABEL,
+        )
     ax.set_xlabel(x_col.replace("_", " ").title())
     ax.set_ylabel(ylabel)
     ax.set_title(title)
@@ -523,6 +545,22 @@ def _plot_bar(
         errors.append(0.0 if not np.isfinite(stats["se"]) else stats["se"])
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.bar(labels, means, yerr=errors, capsize=4)
+    if metric in {"final_exploitability", "best_exploitability", "final_window_mean_exploitability"}:
+        ax.axhline(
+            NASH_EXPLOITABILITY_TARGET,
+            linestyle="--",
+            linewidth=1,
+            label=NASH_EXPLOITABILITY_TARGET_LABEL,
+        )
+        ax.legend()
+    if metric in {"final_policy_value", "best_policy_value", "final_window_mean_policy_value"}:
+        ax.axhline(
+            float(DEFAULT_CONFIG["average_policy_value_target"]),
+            linestyle="--",
+            linewidth=1,
+            label=AVERAGE_POLICY_VALUE_TARGET_LABEL,
+        )
+        ax.legend()
     ax.set_ylabel(ylabel)
     ax.set_title(title)
     ax.grid(True, axis="y", alpha=0.3)
@@ -580,6 +618,23 @@ def _plot_outputs(
     )
     _plot_curve(
         curve_rows,
+        "average_policy_value",
+        "Average policy value",
+        "ESCHER regret-memory storage ablation: average policy value",
+        "average_policy_value_by_iteration_regret_memory_ablation.png",
+        run_dir,
+    )
+    _plot_curve(
+        curve_rows,
+        "average_policy_value",
+        "Average policy value",
+        "ESCHER regret-memory storage ablation: average policy value by nodes",
+        "average_policy_value_by_nodes_regret_memory_ablation.png",
+        run_dir,
+        x_col="nodes_touched",
+    )
+    _plot_curve(
+        curve_rows,
         "policy_value_error",
         "Absolute error from -1/18",
         "ESCHER regret-memory storage ablation: policy-value error",
@@ -608,6 +663,14 @@ def _plot_outputs(
         "Final exploitability (NashConv/2)",
         "ESCHER regret-memory storage ablation: final exploitability",
         "final_exploitability_regret_memory_ablation.png",
+        run_dir,
+    )
+    _plot_bar(
+        summary_rows,
+        "final_policy_value",
+        "Final average policy value",
+        "ESCHER regret-memory storage ablation: final average policy value",
+        "final_average_policy_value_regret_memory_ablation.png",
         run_dir,
     )
     _plot_bar(
@@ -697,7 +760,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     _write_csv(run_dir / "seed_summary.csv", summary_rows, [
         "variant_id", "seed", "status", "use_disk_regret_memory",
         "use_disk_average_policy_memory", "final_exploitability",
-        "final_policy_value_error", "final_regret_storage_mb", "peak_rss_mb",
+        "final_policy_value", "final_policy_value_error", "final_regret_storage_mb", "peak_rss_mb",
     ])
     _write_csv(run_dir / "variant_aggregate_summary.csv", aggregate_rows, [
         "variant_id", "metric", "mean", "std", "se", "n_finite",
@@ -705,6 +768,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     _write_csv(run_dir / "paired_differences_vs_baseline.csv", paired_rows, [
         "variant_id", "seed", "delta_final_exploitability_disk_minus_baseline",
         "delta_final_window_mean_exploitability_disk_minus_baseline",
+        "delta_final_policy_value_disk_minus_baseline",
         "delta_final_policy_value_error_disk_minus_baseline",
         "delta_final_wall_clock_seconds_disk_minus_baseline",
         "delta_peak_rss_mb_disk_minus_baseline",

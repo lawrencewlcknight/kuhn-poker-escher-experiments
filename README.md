@@ -373,6 +373,11 @@ python -m experiments.kuhn_poker.escher_solver_parameter_random_search.run \
 
 Outputs are written to a timestamped subdirectory under `outputs/` by default. The key files are:
 
+Average-policy-value charts plot the configured `average_policy_value_target`.
+For Kuhn poker this is player 0's Nash equilibrium value, `-1/18`
+(`-0.0555...`); future Leduc experiments should override that config value
+rather than editing plotting code.
+
 ```text
 seed_summary.csv
 aggregate_summary.json
@@ -380,6 +385,8 @@ checkpoint_curves.csv
 experiment_metadata.json
 exploitability_by_iteration_multiseed.png
 exploitability_by_nodes_multiseed.png
+average_policy_value_by_iteration_multiseed.png
+average_policy_value_by_nodes_multiseed.png
 policy_value_error_multiseed.png
 policy_loss_diagnostic.png
 regret_loss_diagnostic.png
@@ -398,6 +405,7 @@ paired_differences_vs_baseline.csv
 paired_difference_summary.csv
 paired_difference_summary.json
 final_exploitability_by_variant.png
+final_average_policy_value_by_variant.png
 runtime_by_variant.png
 ```
 
@@ -406,6 +414,7 @@ Checkpoint-stability experiments also export policy snapshots, exact pairwise he
 ```text
 checkpoint_stage_summary.csv
 checkpoint_exploitability_metrics.csv
+checkpoint_average_policy_value_with_target.png
 head_to_head_exact_pairwise.csv
 head_to_head_exact_mean_matrix.csv
 head_to_head_monotonicity_summary_by_seed.csv
@@ -423,7 +432,9 @@ confirmation_aggregate_by_variant.csv
 confirmation_paired_differences_vs_baseline.csv
 confirmation_paired_difference_summary.csv
 screening_exploitability_by_iteration.png
+screening_average_policy_value_by_iteration.png
 confirmation_final_exploitability_by_variant.png
+confirmation_final_average_policy_value_by_variant.png
 ```
 
 Warm-start ablations export paired continuous/resumed summaries and checkpoint-resume artifacts such as:
@@ -434,6 +445,7 @@ paired_summary.csv
 paired_aggregate_summary.csv
 paired_checkpoint_differences.csv
 warm_start_exploitability_by_iteration.png
+warm_start_average_policy_value_by_iteration.png
 warm_start_paired_delta_exploitability_warm_minus_baseline.png
 checkpoints/
 ```
@@ -448,6 +460,7 @@ paired_difference_summary.csv
 checkpoint_curves.csv
 lr_schedule_learning_rates.png
 lr_schedule_exploitability_by_iteration.png
+lr_schedule_average_policy_value_by_iteration.png
 lr_schedule_paired_delta_final_exploitability.png
 ```
 
@@ -460,6 +473,8 @@ paired_differences_vs_baseline.csv
 paired_difference_summary.csv
 checkpoint_curves.csv
 exploitability_by_iteration_reach_ablation.png
+average_policy_value_by_iteration_reach_ablation.png
+final_average_policy_value_reach_ablation.png
 paired_final_exploitability_delta_reach_minus_baseline.png
 ```
 
@@ -472,6 +487,8 @@ paired_differences_vs_baseline.csv
 paired_difference_summary.csv
 checkpoint_curves.csv
 exploitability_by_iteration_reuse_ablation.png
+average_policy_value_by_iteration_reuse_ablation.png
+final_average_policy_value_reuse_ablation.png
 dedicated_value_traversals_reuse_ablation.png
 paired_final_exploitability_delta_reuse_minus_baseline.png
 ```
@@ -485,6 +502,8 @@ paired_differences_vs_baseline.csv
 paired_difference_summary.csv
 checkpoint_curves.csv
 exploitability_by_iteration_regret_memory_ablation.png
+average_policy_value_by_iteration_regret_memory_ablation.png
+final_average_policy_value_regret_memory_ablation.png
 peak_rss_by_variant.png
 regret_storage_mb_by_variant.png
 paired_final_exploitability_delta_disk_minus_baseline.png
@@ -500,6 +519,8 @@ paired_differences_vs_baseline.csv
 paired_difference_summary.csv
 checkpoint_curves.csv
 exploitability_by_iteration_on_policy_ablation.png
+average_policy_value_by_iteration_on_policy_ablation.png
+final_average_policy_value_on_policy_ablation.png
 nominal_regret_traversals_by_variant.png
 paired_final_exploitability_delta_on_policy_minus_baseline.png
 ```
@@ -516,6 +537,7 @@ screening_checkpoint_curves.csv
 confirmation_checkpoint_curves.csv
 solver_parameter_random_search_curves.npz
 screening_exploitability_by_iteration.png
+screening_average_policy_value_by_iteration.png
 confirmation_paired_delta_final_exploitability.png
 ```
 

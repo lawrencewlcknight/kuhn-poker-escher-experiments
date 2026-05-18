@@ -30,7 +30,12 @@ import pyspiel  # noqa: E402
 import tensorflow as tf  # noqa: E402
 from tqdm import tqdm  # noqa: E402
 
-from escher_poker.constants import EXPLOITABILITY_THRESHOLD, KUHN_GAME_VALUE_PLAYER_0  # noqa: E402
+from escher_poker.constants import (  # noqa: E402
+    AVERAGE_POLICY_VALUE_TARGET_LABEL,
+    KUHN_GAME_VALUE_PLAYER_0,
+    NASH_EXPLOITABILITY_TARGET,
+    NASH_EXPLOITABILITY_TARGET_LABEL,
+)
 from escher_poker.experiment_utils import (  # noqa: E402
     create_run_dir,
     evaluate_final_policy,
@@ -68,6 +73,8 @@ SUMMARY_METRICS = [
     "final_window_mean_exploitability",
     "normalised_exploitability_auc_by_nodes",
     "normalised_exploitability_auc_by_iteration",
+    "final_policy_value",
+    "final_policy_value_recomputed",
     "final_policy_value_error",
     "final_policy_value_error_recomputed",
     "best_policy_value_error",
@@ -84,6 +91,8 @@ PAIRED_METRICS = [
     "delta_final_window_mean_exploitability_warm_minus_baseline",
     "delta_auc_nodes_warm_minus_baseline",
     "delta_auc_iteration_warm_minus_baseline",
+    "delta_final_policy_value_warm_minus_baseline",
+    "delta_final_policy_value_recomputed_warm_minus_baseline",
     "delta_final_policy_value_error_warm_minus_baseline",
     "delta_final_policy_value_error_recomputed_warm_minus_baseline",
     "delta_wall_clock_seconds_warm_minus_baseline",
@@ -490,6 +499,13 @@ def _paired_differences(summary_rows: List[Dict[str, Any]]) -> List[Dict[str, An
                 warm["normalised_exploitability_auc_by_iteration"]
                 - baseline["normalised_exploitability_auc_by_iteration"]
             ),
+            "delta_final_policy_value_warm_minus_baseline": float(
+                warm["final_policy_value"] - baseline["final_policy_value"]
+            ),
+            "delta_final_policy_value_recomputed_warm_minus_baseline": float(
+                warm["final_policy_value_recomputed"]
+                - baseline["final_policy_value_recomputed"]
+            ),
             "delta_final_policy_value_error_warm_minus_baseline": float(
                 warm["final_policy_value_error"] - baseline["final_policy_value_error"]
             ),
@@ -616,7 +632,19 @@ def _plot_arm_curves(
         ax.plot(x, mean, linewidth=2, label=f"{ARM_LABELS[arm]} mean")
         ax.fill_between(x, mean - se, mean + se, alpha=0.15)
     if metric == "exploitability":
-        ax.axhline(EXPLOITABILITY_THRESHOLD, linestyle="--", linewidth=1)
+        ax.axhline(
+            NASH_EXPLOITABILITY_TARGET,
+            linestyle="--",
+            linewidth=1,
+            label=NASH_EXPLOITABILITY_TARGET_LABEL,
+        )
+    if metric == "average_policy_value":
+        ax.axhline(
+            float(DEFAULT_CONFIG["average_policy_value_target"]),
+            linestyle="--",
+            linewidth=1,
+            label=AVERAGE_POLICY_VALUE_TARGET_LABEL,
+        )
     ax.set_xlabel(x_col.replace("_", " ").title())
     ax.set_ylabel(ylabel)
     ax.set_title(title)
@@ -742,6 +770,24 @@ def _plot_outputs(
     )
     _plot_arm_curves(
         curve_rows,
+        "average_policy_value",
+        "Average policy value",
+        "ESCHER warm-start ablation: average policy value by iteration",
+        "warm_start_average_policy_value_by_iteration.png",
+        run_dir,
+        x_col="iteration",
+    )
+    _plot_arm_curves(
+        curve_rows,
+        "average_policy_value",
+        "Average policy value",
+        "ESCHER warm-start ablation: average policy value by nodes",
+        "warm_start_average_policy_value_by_nodes.png",
+        run_dir,
+        x_col="nodes_touched",
+    )
+    _plot_arm_curves(
+        curve_rows,
         "policy_value_error",
         "Absolute error from -1/18",
         "ESCHER warm-start ablation: policy-value error",
@@ -834,7 +880,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     _write_csv(run_dir / "seed_summary.csv", summary_rows, [
         "seed", "arm", "status", "final_exploitability",
         "final_exploitability_recomputed", "best_exploitability",
-        "final_window_mean_exploitability", "final_policy_value_error",
+        "final_window_mean_exploitability", "final_policy_value",
+        "final_policy_value_recomputed", "final_policy_value_error",
         "final_policy_value_error_recomputed", "final_nodes_touched",
         "total_outer_wall_clock_seconds", "policy_training_events",
     ])
@@ -847,6 +894,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         "delta_best_exploitability_warm_minus_baseline",
         "delta_final_window_mean_exploitability_warm_minus_baseline",
         "delta_auc_nodes_warm_minus_baseline",
+        "delta_final_policy_value_warm_minus_baseline",
+        "delta_final_policy_value_recomputed_warm_minus_baseline",
         "delta_final_policy_value_error_warm_minus_baseline",
     ])
     _write_csv(run_dir / "paired_aggregate_summary.csv", paired_aggregate_rows, [
@@ -905,4 +954,3 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
-

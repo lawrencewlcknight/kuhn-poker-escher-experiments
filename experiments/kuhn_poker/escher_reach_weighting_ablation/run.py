@@ -32,7 +32,12 @@ from open_spiel.python import policy  # noqa: E402
 from open_spiel.python.algorithms import exploitability, expected_game_score  # noqa: E402
 from tqdm import tqdm  # noqa: E402
 
-from escher_poker.constants import EXPLOITABILITY_THRESHOLD, KUHN_GAME_VALUE_PLAYER_0  # noqa: E402
+from escher_poker.constants import (  # noqa: E402
+    AVERAGE_POLICY_VALUE_TARGET_LABEL,
+    KUHN_GAME_VALUE_PLAYER_0,
+    NASH_EXPLOITABILITY_TARGET,
+    NASH_EXPLOITABILITY_TARGET_LABEL,
+)
 from escher_poker.experiment_utils import (  # noqa: E402
     create_run_dir,
     final_window_mean,
@@ -61,6 +66,7 @@ METRICS_TO_SUMMARISE = [
     "final_exploitability",
     "best_exploitability",
     "final_window_mean_exploitability",
+    "final_policy_value",
     "final_policy_value_error",
     "best_policy_value_error",
     "exploitability_auc_by_iteration",
@@ -83,6 +89,7 @@ PAIRED_METRICS = [
     "delta_final_exploitability_reach_minus_baseline",
     "delta_best_exploitability_reach_minus_baseline",
     "delta_final_window_mean_exploitability_reach_minus_baseline",
+    "delta_final_policy_value_reach_minus_baseline",
     "delta_final_policy_value_error_reach_minus_baseline",
     "delta_exploitability_auc_by_iteration_reach_minus_baseline",
     "delta_exploitability_auc_by_nodes_reach_minus_baseline",
@@ -388,6 +395,9 @@ def _paired_differences(summary_rows: List[Dict[str, Any]]) -> List[Dict[str, An
                 treatment["final_window_mean_exploitability"]
                 - baseline["final_window_mean_exploitability"]
             ),
+            "delta_final_policy_value_reach_minus_baseline": float(
+                treatment["final_policy_value"] - baseline["final_policy_value"]
+            ),
             "delta_final_policy_value_error_reach_minus_baseline": float(
                 treatment["final_policy_value_error"]
                 - baseline["final_policy_value_error"]
@@ -475,7 +485,19 @@ def _plot_curve(
         ax.plot(x, mean, linewidth=2, label=_variant_label(variant_id))
         ax.fill_between(x, mean - se, mean + se, alpha=0.15)
     if metric == "exploitability":
-        ax.axhline(EXPLOITABILITY_THRESHOLD, linestyle="--", linewidth=1)
+        ax.axhline(
+            NASH_EXPLOITABILITY_TARGET,
+            linestyle="--",
+            linewidth=1,
+            label=NASH_EXPLOITABILITY_TARGET_LABEL,
+        )
+    if metric == "average_policy_value":
+        ax.axhline(
+            float(DEFAULT_CONFIG["average_policy_value_target"]),
+            linestyle="--",
+            linewidth=1,
+            label=AVERAGE_POLICY_VALUE_TARGET_LABEL,
+        )
     ax.set_xlabel(x_col.replace("_", " ").title())
     ax.set_ylabel(ylabel)
     ax.set_title(title)
@@ -504,12 +526,53 @@ def _plot_final_bar(summary_rows: List[Dict[str, Any]], run_dir: Path) -> None:
         errors.append(0.0 if not np.isfinite(stats["se"]) else stats["se"])
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.bar(labels, means, yerr=errors, capsize=4)
+    ax.axhline(
+        NASH_EXPLOITABILITY_TARGET,
+        linestyle="--",
+        linewidth=1,
+        label=NASH_EXPLOITABILITY_TARGET_LABEL,
+    )
     ax.set_ylabel("Final exploitability (NashConv/2)")
     ax.set_title("ESCHER reach-weighting ablation: final exploitability")
     ax.grid(True, axis="y", alpha=0.3)
     ax.tick_params(axis="x", rotation=20)
+    ax.legend()
     fig.tight_layout()
     fig.savefig(run_dir / "final_exploitability_reach_ablation.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _plot_final_policy_value_bar(summary_rows: List[Dict[str, Any]], run_dir: Path) -> None:
+    labels = []
+    means = []
+    errors = []
+    for variant in VARIANTS:
+        values = [
+            row["final_policy_value"]
+            for row in summary_rows
+            if row["variant_id"] == variant["variant_id"]
+        ]
+        if not values:
+            continue
+        stats = safe_stats(values)
+        labels.append(variant["variant_label"])
+        means.append(stats["mean"])
+        errors.append(0.0 if not np.isfinite(stats["se"]) else stats["se"])
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.bar(labels, means, yerr=errors, capsize=4)
+    ax.axhline(
+        float(DEFAULT_CONFIG["average_policy_value_target"]),
+        linestyle="--",
+        linewidth=1,
+        label=AVERAGE_POLICY_VALUE_TARGET_LABEL,
+    )
+    ax.set_ylabel("Final average policy value")
+    ax.set_title("ESCHER reach-weighting ablation: final average policy value")
+    ax.grid(True, axis="y", alpha=0.3)
+    ax.tick_params(axis="x", rotation=20)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(run_dir / "final_average_policy_value_reach_ablation.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -561,6 +624,23 @@ def _plot_outputs(
     )
     _plot_curve(
         curve_rows,
+        "average_policy_value",
+        "Average policy value",
+        "ESCHER reach-weighting ablation: average policy value",
+        "average_policy_value_by_iteration_reach_ablation.png",
+        run_dir,
+    )
+    _plot_curve(
+        curve_rows,
+        "average_policy_value",
+        "Average policy value",
+        "ESCHER reach-weighting ablation: average policy value by nodes",
+        "average_policy_value_by_nodes_reach_ablation.png",
+        run_dir,
+        x_col="nodes_touched",
+    )
+    _plot_curve(
+        curve_rows,
         "policy_value_error",
         "Absolute error from -1/18",
         "ESCHER reach-weighting ablation: policy-value error",
@@ -574,6 +654,7 @@ def _plot_outputs(
     ]:
         _plot_curve(curve_rows, key, "MSE loss", title, filename, run_dir)
     _plot_final_bar(summary_rows, run_dir)
+    _plot_final_policy_value_bar(summary_rows, run_dir)
     _plot_paired_delta(paired_rows, run_dir)
 
 
@@ -644,7 +725,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     _write_csv(run_dir / "seed_summary.csv", summary_rows, [
         "variant_id", "seed", "status", "use_reach_weighted_avg_policy_loss",
         "final_exploitability", "best_exploitability",
-        "final_window_mean_exploitability", "final_policy_value_error",
+        "final_window_mean_exploitability", "final_policy_value", "final_policy_value_error",
         "exploitability_auc_by_iteration", "avg_policy_reach_mean",
     ])
     _write_csv(run_dir / "variant_aggregate_summary.csv", aggregate_rows, [
@@ -654,6 +735,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "variant_id", "seed", "delta_final_exploitability_reach_minus_baseline",
         "delta_best_exploitability_reach_minus_baseline",
         "delta_final_window_mean_exploitability_reach_minus_baseline",
+        "delta_final_policy_value_reach_minus_baseline",
         "delta_final_policy_value_error_reach_minus_baseline",
         "delta_exploitability_auc_by_iteration_reach_minus_baseline",
     ])
@@ -709,4 +791,3 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
-

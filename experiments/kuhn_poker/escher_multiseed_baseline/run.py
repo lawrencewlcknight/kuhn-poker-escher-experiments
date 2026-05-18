@@ -155,7 +155,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     aggregate = export_seed_summary(run_dir, results)
     export_checkpoint_curves(run_dir, results)
-    plot_multiseed_results(results, run_dir)
+    plot_multiseed_results(
+        results,
+        run_dir,
+        average_policy_value_target=float(config["average_policy_value_target"]),
+    )
     plot_diagnostics(results, run_dir)
 
     _LOGGER.info("Aggregate final exploitability: %s", aggregate.get("final_exploitability"))
