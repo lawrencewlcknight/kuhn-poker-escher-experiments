@@ -32,8 +32,8 @@ SCREENING_EVALUATION_INTERVAL = 10
 SCREENING_SEEDS = [1234, 2025]
 N_RANDOM_CANDIDATES = 8
 
-CONFIRMATION_ITERATIONS = 130
-CONFIRMATION_EVALUATION_INTERVAL = 5
+CONFIRMATION_ITERATIONS = int(BASELINE_DEFAULT_CONFIG["num_iterations"])
+CONFIRMATION_EVALUATION_INTERVAL = int(BASELINE_DEFAULT_CONFIG["check_exploitability_every"])
 CONFIRMATION_SEEDS = [1234, 2025, 31415]
 CONFIRMATION_TOP_K = 3
 
@@ -47,18 +47,18 @@ RANDOM_SEARCH_SEED = 314159
 
 SEARCH_SPACE = {
     "learning_rate": [3e-4, 5e-4, 1e-3, 2e-3],
-    "num_traversals": [250, 500, 750, 1000],
-    "num_val_fn_traversals": [250, 500, 750, 1000],
-    "regret_network_train_steps": [100, 200, 400, 800],
-    "value_network_train_steps": [100, 200, 400, 800],
-    "policy_network_train_steps": [500, 1000, 1500, 2000],
-    "policy_network_layers": [(128, 128), (256, 128), (256, 256), (512, 256)],
-    "regret_network_layers": [(128, 128), (256, 128), (256, 256), (512, 256)],
-    "value_network_layers": [(128, 128), (256, 128), (256, 256), (512, 256)],
-    "batch_size_regret": [128, 256, 512],
-    "batch_size_value": [128, 256, 512],
-    "batch_size_average_policy": [5000, 10000],
-    "memory_capacity": [int(5e4), int(1e5), int(5e5)],
+    "num_traversals": [75, 150, 300],
+    "num_val_fn_traversals": [75, 150, 300],
+    "regret_network_train_steps": [25, 50, 100],
+    "value_network_train_steps": [25, 50, 100],
+    "policy_network_train_steps": [100, 200, 400],
+    "policy_network_layers": [(32, 32), (64, 64), (128, 64)],
+    "regret_network_layers": [(32, 32), (64, 64), (128, 64)],
+    "value_network_layers": [(32, 32), (64, 64), (128, 64)],
+    "batch_size_regret": [64, 128, 256],
+    "batch_size_value": [64, 128, 256],
+    "batch_size_average_policy": [1024, 2048, 4096],
+    "memory_capacity": [int(2.5e4), int(5e4), int(1e5)],
     "reinitialize_regret_networks": [True, False],
     "reinitialize_value_network": [True, False],
     "expl": [0.5, 1.0],

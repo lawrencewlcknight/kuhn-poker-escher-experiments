@@ -25,13 +25,13 @@ DEFAULT_CONFIG.update({
     "all_actions": True,
 })
 
-SCREENING_ITERATIONS = 80
-SCREENING_EVALUATION_INTERVAL = 10
+SCREENING_ITERATIONS = int(BASELINE_DEFAULT_CONFIG["num_iterations"])
+SCREENING_EVALUATION_INTERVAL = int(BASELINE_DEFAULT_CONFIG["check_exploitability_every"])
 SCREENING_SEEDS = [1234, 2025]
 N_RANDOM_CANDIDATES = 4
 
-CONFIRMATION_ITERATIONS = 130
-CONFIRMATION_EVALUATION_INTERVAL = 5
+CONFIRMATION_ITERATIONS = int(BASELINE_DEFAULT_CONFIG["num_iterations"])
+CONFIRMATION_EVALUATION_INTERVAL = int(BASELINE_DEFAULT_CONFIG["check_exploitability_every"])
 CONFIRMATION_SEEDS = [1234, 2025, 31415]
 CONFIRMATION_TOP_K = 2
 
@@ -42,17 +42,17 @@ RANDOM_SEARCH_SEED = 1729
 
 SEARCH_SPACE = {
     "learning_rate": [3e-4, 5e-4, 1e-3, 2e-3],
-    "num_traversals": [250, 500, 750, 1000],
-    "num_val_fn_traversals": [500, 750, 1000, 1500],
-    "regret_network_train_steps": [200, 400, 800],
-    "value_network_train_steps": [200, 400, 800],
-    "policy_network_train_steps": [1000, 1500, 2000],
-    "policy_network_layers": [(128, 128), (256, 128), (256, 256), (512, 256)],
-    "regret_network_layers": [(128, 128), (256, 128), (256, 256), (512, 256)],
-    "value_network_layers": [(128, 128), (256, 128), (256, 256), (512, 256)],
-    "batch_size_regret": [128, 256, 512],
-    "batch_size_value": [128, 256, 512],
-    "memory_capacity": [int(1e5), int(5e5)],
+    "num_traversals": [75, 150, 300],
+    "num_val_fn_traversals": [75, 150, 300],
+    "regret_network_train_steps": [25, 50, 100],
+    "value_network_train_steps": [25, 50, 100],
+    "policy_network_train_steps": [100, 200, 400],
+    "policy_network_layers": [(32, 32), (64, 64), (128, 64)],
+    "regret_network_layers": [(32, 32), (64, 64), (128, 64)],
+    "value_network_layers": [(32, 32), (64, 64), (128, 64)],
+    "batch_size_regret": [64, 128, 256],
+    "batch_size_value": [64, 128, 256],
+    "memory_capacity": [int(2.5e4), int(5e4), int(1e5)],
     "reinitialize_regret_networks": [True, False],
     "reinitialize_value_network": [True, False],
     "expl": [0.5, 1.0],
@@ -73,14 +73,14 @@ def make_targeted_candidates(base_config: Dict[str, Any]) -> List[Dict[str, Any]
 
     add_targeted(
         "targeted_more_value_fitting",
-        num_val_fn_traversals=1000,
-        value_network_train_steps=800,
+        num_val_fn_traversals=300,
+        value_network_train_steps=100,
         learning_rate=5e-4,
     )
     add_targeted(
         "targeted_more_regret_fitting",
-        num_traversals=750,
-        regret_network_train_steps=800,
+        num_traversals=300,
+        regret_network_train_steps=100,
         learning_rate=5e-4,
     )
     add_targeted(
@@ -89,11 +89,20 @@ def make_targeted_candidates(base_config: Dict[str, Any]) -> List[Dict[str, Any]
         reinitialize_value_network=False,
     )
     add_targeted(
-        "targeted_larger_networks_lower_lr",
-        policy_network_layers=(512, 256),
-        regret_network_layers=(512, 256),
-        value_network_layers=(512, 256),
+        "targeted_slightly_wider_networks_lower_lr",
+        policy_network_layers=(128, 64),
+        regret_network_layers=(128, 64),
+        value_network_layers=(128, 64),
         learning_rate=5e-4,
+    )
+    add_targeted(
+        "targeted_smaller_networks_less_fitting",
+        policy_network_layers=(32, 32),
+        regret_network_layers=(32, 32),
+        value_network_layers=(32, 32),
+        policy_network_train_steps=100,
+        regret_network_train_steps=25,
+        value_network_train_steps=25,
     )
     return candidates
 

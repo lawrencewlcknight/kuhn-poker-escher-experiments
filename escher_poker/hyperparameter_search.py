@@ -16,6 +16,7 @@ from open_spiel.python.algorithms import exploitability, expected_game_score
 
 from .constants import DEFAULT_FINAL_WINDOW, KUHN_GAME_VALUE_PLAYER_0
 from .experiment_utils import (
+    cleanup_tensorflow_memory,
     final_window_mean,
     first_nodes_to_threshold,
     first_time_to_threshold,
@@ -221,6 +222,7 @@ def run_single_hyperparameter_seed(
     finally:
         if solver is not None:
             del solver
+        cleanup_tensorflow_memory()
 
     value_error = np.abs(avg_policy_values - KUHN_GAME_VALUE_PLAYER_0)
     final_exploitability = _safe_last(exploitability_curve)

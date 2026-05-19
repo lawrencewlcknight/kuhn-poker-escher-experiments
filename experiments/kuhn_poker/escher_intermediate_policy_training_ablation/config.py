@@ -16,11 +16,11 @@ DEFAULT_CONFIG.update({
     "experiment_name": "kuhn_poker_escher_intermediate_policy_training_ablation",
 })
 
-REFERENCE_VARIANT_ID = "intermediate_every_5_baseline"
+REFERENCE_VARIANT_ID = "intermediate_checkpoint_baseline"
 
 DEFAULT_VARIANT_IDS = [
     REFERENCE_VARIANT_ID,
-    "final_only_1000_steps",
+    "final_only_single_event_steps",
     "final_only_matched_steps",
 ]
 
@@ -64,7 +64,7 @@ def build_policy_training_variants(base_config: Dict[str, Any]) -> List[Dict[str
             ),
         },
         {
-            "variant_id": "final_only_1000_steps",
+            "variant_id": "final_only_single_event_steps",
             "label": f"Final only: {base_steps} steps",
             "compute_exploitability": False,
             "check_exploitability_every": int(base_config["check_exploitability_every"]),

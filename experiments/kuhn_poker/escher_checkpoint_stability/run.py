@@ -525,6 +525,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         except Exception as exc:  # pragma: no cover - operational robustness
             _LOGGER.error("Seed %s failed: %s", seed, exc)
             failures.append({"seed": seed, "error": str(exc), "traceback": traceback.format_exc()})
+        finally:
+            cleanup_memory()
 
     if failures:
         with open(run_dir / "failed_runs.json", "w", encoding="utf-8") as f:

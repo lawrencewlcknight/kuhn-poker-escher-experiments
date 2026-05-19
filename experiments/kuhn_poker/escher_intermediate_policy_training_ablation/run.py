@@ -30,6 +30,7 @@ from tqdm import tqdm  # noqa: E402
 from escher_poker.ablation_plotting import plot_policy_training_ablation  # noqa: E402
 from escher_poker.constants import KUHN_GAME_VALUE_PLAYER_0  # noqa: E402
 from escher_poker.experiment_utils import (  # noqa: E402
+    cleanup_tensorflow_memory,
     create_run_dir,
     json_safe,
     safe_stats,
@@ -375,6 +376,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "error": str(exc),
                     "traceback": traceback.format_exc(),
                 })
+            finally:
+                cleanup_tensorflow_memory()
 
     if failures:
         with open(run_dir / "failed_runs.json", "w", encoding="utf-8") as f:

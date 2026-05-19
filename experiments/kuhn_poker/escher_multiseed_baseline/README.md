@@ -4,6 +4,13 @@ This experiment runs the aligned ESCHER baseline on OpenSpiel `kuhn_poker`.
 
 The experiment is designed to be the ESCHER counterpart to the Deep CFR multi-seed validation experiment. It uses the same seed set and exports the same broad categories of metrics and thesis-style plots, while retaining ESCHER-specific diagnostics such as regret-network and history-value-network losses.
 
+The default solver specification is intentionally lightweight for Kuhn poker:
+80 ESCHER iterations, 150 regret traversals, 150 history-value traversals,
+64-by-64 policy/regret/value networks, 200 average-policy training steps, and
+50 regret/value training steps per update. This replaces the original
+notebook-aligned setting, which used substantially wider networks and many more
+supervised update steps.
+
 ## Run
 
 From the repository root:

@@ -869,6 +869,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "error": str(exc),
                     "traceback": traceback.format_exc(),
                 })
+            finally:
+                cleanup_memory()
 
     summary_rows = [result["summary"] for result in results]
     aggregate_rows = _aggregate_by_arm(summary_rows)

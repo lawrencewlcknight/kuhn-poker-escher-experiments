@@ -10,9 +10,9 @@ The design is paired by seed:
 - `warm_start`: train to `warm_start_boundary`, save a full solver checkpoint,
   reload into a fresh solver, and continue to the same final iteration axis.
 
-The default configuration follows the aligned ESCHER baseline: 130 total
-iterations, a warm-start boundary at iteration 30, 500 regret traversals, 500
-history-value traversals, and the same ten thesis seeds.
+The default configuration follows the lightweight aligned ESCHER baseline:
+80 total iterations, a warm-start boundary at iteration 30, 150 regret
+traversals, 150 history-value traversals, and the same ten thesis seeds.
 
 ## Run
 
@@ -53,4 +53,3 @@ Each run creates a timestamped directory under `outputs/` containing:
 
 Positive paired deltas mean the warm-start arm is worse for error metrics such as
 exploitability and policy-value error.
-

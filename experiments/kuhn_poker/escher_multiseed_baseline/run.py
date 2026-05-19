@@ -19,6 +19,7 @@ os.environ.setdefault("ABSL_MIN_LOG_LEVEL", "3")
 from tqdm import tqdm  # noqa: E402
 
 from escher_poker.experiment_utils import (  # noqa: E402
+    cleanup_tensorflow_memory,
     create_run_dir,
     export_checkpoint_curves,
     export_metadata,
@@ -143,6 +144,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         except Exception as exc:  # pragma: no cover - operational robustness
             _LOGGER.error("Seed %s failed: %s", seed, exc)
             failures.append({"seed": seed, "error": str(exc), "traceback": traceback.format_exc()})
+        finally:
+            cleanup_tensorflow_memory()
 
     if failures:
         import json

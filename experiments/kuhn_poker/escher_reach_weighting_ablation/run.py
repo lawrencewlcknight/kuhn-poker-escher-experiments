@@ -715,6 +715,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "error": str(exc),
                     "traceback": traceback.format_exc(),
                 })
+            finally:
+                cleanup_memory()
 
     summary_rows = [result["summary"] for result in results]
     curve_rows = _curve_rows(results)

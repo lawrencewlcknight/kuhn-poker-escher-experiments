@@ -6,8 +6,8 @@ In this implementation, exploitability can only be computed for a playable polic
 
 ## Variants
 
-- `intermediate_every_5_baseline` — the aligned ESCHER baseline. It trains/evaluates the average-policy network at intermediate checkpoints and trains once more at final policy extraction.
-- `final_only_1000_steps` — disables intermediate exploitability checks and trains the average-policy network once at the end for the usual single-event budget.
+- `intermediate_checkpoint_baseline` — the aligned ESCHER baseline. It trains/evaluates the average-policy network at intermediate checkpoints and trains once more at final policy extraction.
+- `final_only_single_event_steps` — disables intermediate exploitability checks and trains the average-policy network once at the end for the usual single-event budget.
 - `final_only_matched_steps` — disables intermediate exploitability checks and trains once at the end with the same total policy-gradient step budget used by the baseline arm.
 
 The default ESCHER regret/history-value configuration and seed set are inherited from `escher_multiseed_baseline`.
@@ -39,7 +39,7 @@ To run a subset of arms:
 
 ```bash
 python -m experiments.kuhn_poker.escher_intermediate_policy_training_ablation.run \
-  --variant-ids intermediate_every_5_baseline,final_only_1000_steps
+  --variant-ids intermediate_checkpoint_baseline,final_only_single_event_steps
 ```
 
 ## Main Outputs

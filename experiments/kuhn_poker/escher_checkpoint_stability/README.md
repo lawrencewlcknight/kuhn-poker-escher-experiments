@@ -7,10 +7,11 @@ The experiment runs a checkpointed ESCHER arm using the baseline configuration a
 ## Default Schedule
 
 ```text
-10, 30, 50, 75, 100, 115, 130
+10, 20, 30, 40, 50, 60, 70, 80
 ```
 
-The final checkpoint matches the 130-update ESCHER baseline horizon.
+The final checkpoint is derived from the ESCHER baseline horizon, so it tracks
+the current lightweight baseline configuration.
 
 ## Run
 

@@ -88,7 +88,7 @@ The repository is organised so that each experiment can be run independently whi
 
 [`experiments/kuhn_poker/escher_multiseed_baseline/`](experiments/kuhn_poker/escher_multiseed_baseline/README.md)
 
-Runs the aligned ESCHER baseline on OpenSpiel `kuhn_poker` across the same ten random seeds used in the Deep CFR baseline experiments. The primary metric is exploitability, reported as NashConv divided by two. Secondary metrics include policy-value error from the known Kuhn game value, nodes touched, wall-clock time, and final/best/final-window exploitability. Diagnostic metrics include average-policy loss, regret-network losses, history-value-network train/test loss, and replay-buffer sizes.
+Runs the aligned ESCHER baseline on OpenSpiel `kuhn_poker` across the same ten random seeds used in the Deep CFR baseline experiments. The default solver specification is deliberately lightweight for Kuhn poker, using smaller 64-by-64 networks, fewer traversals, fewer supervised training steps, and less frequent intermediate exploitability checks than the original notebook-aligned configuration. The primary metric is exploitability, reported as NashConv divided by two. Secondary metrics include policy-value error from the known Kuhn game value, nodes touched, wall-clock time, and final/best/final-window exploitability. Diagnostic metrics include average-policy loss, regret-network losses, history-value-network train/test loss, and replay-buffer sizes.
 
 **Question:** under a fixed training protocol, does the ESCHER implementation learn a low-exploitability average policy in Kuhn poker, and how variable is the result across random seeds?
 
@@ -114,7 +114,7 @@ Saves playable average-policy checkpoints during ESCHER training and evaluates w
 
 [`experiments/kuhn_poker/escher_constrained_hyperparameter_search/`](experiments/kuhn_poker/escher_constrained_hyperparameter_search/README.md)
 
-Runs a bounded search around the ESCHER baseline configuration to test whether poor convergence in Kuhn poker can be explained by avoidable optimisation or approximation settings. The experiment uses a screening stage over baseline, targeted, and random candidates, then confirms the strongest candidates against the baseline under matched seeds.
+Runs a bounded search around the ESCHER baseline configuration to test whether poor convergence in Kuhn poker can be explained by avoidable optimisation or approximation settings. The experiment uses a screening stage over baseline, targeted, and random candidates, then confirms the strongest candidates against the baseline under matched seeds. The default search space is capped around the lightweight baseline so it tests smaller and moderately larger specifications without returning to the old notebook-scale budgets.
 
 **Question:** can a constrained change to ESCHER hyperparameters produce reliably lower exploitability than the thesis baseline?
 
@@ -170,7 +170,7 @@ Compares the baseline separate player-specific regret traversal batches against 
 
 [`experiments/kuhn_poker/escher_solver_parameter_random_search/`](experiments/kuhn_poker/escher_solver_parameter_random_search/README.md)
 
-Runs a bounded two-stage random search over configurable ESCHER solver parameters. Screening evaluates the baseline plus sampled solver configurations under a reduced budget; confirmation compares the strongest sampled configurations against the ESCHER baseline with matched seeds and the full baseline budget.
+Runs a bounded two-stage random search over configurable ESCHER solver parameters. Screening evaluates the baseline plus sampled solver configurations under a reduced budget; confirmation compares the strongest sampled configurations against the ESCHER baseline with matched seeds and the full baseline budget. The sampled ranges include lightweight and modestly heavier candidates while excluding configurations likely to make multi-seed training time explode.
 
 **Question:** is ESCHER's Kuhn poker non-convergence partly caused by a poor balance between traversal budget, value fitting, regret fitting, policy extraction, exploration, and network capacity?
 

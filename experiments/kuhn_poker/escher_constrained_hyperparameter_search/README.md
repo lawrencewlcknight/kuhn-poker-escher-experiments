@@ -11,7 +11,7 @@ The default protocol has two stages:
 - **Screening:** baseline plus targeted and random candidate configurations are trained for a reduced budget over matched seeds.
 - **Confirmation:** the strongest screening candidates are compared against the baseline using the full ESCHER baseline training budget and matched seeds.
 
-The constrained search varies learning rate, traversal budgets, value/regret/policy fitting steps, network sizes, regret/value reinitialisation, batch sizes, replay capacity, and ESCHER traversal/value-target controls.
+The constrained search varies learning rate, traversal budgets, value/regret/policy fitting steps, network sizes, regret/value reinitialisation, batch sizes, replay capacity, and ESCHER traversal/value-target controls. The default search space is intentionally capped around the lightweight baseline: it includes smaller and moderately larger candidates, but avoids the old notebook-scale settings that made training time explode.
 
 ## Run
 

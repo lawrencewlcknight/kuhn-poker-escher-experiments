@@ -7,6 +7,11 @@ history-value fitting, regret fitting, average-policy extraction, network
 capacity, exploration, importance sampling, and selected value-estimation
 controls.
 
+The sampled ranges are centred on the lightweight thesis baseline. They still
+include modestly larger traversal, fitting, and network-capacity choices, but
+exclude the older notebook-scale budgets that are too expensive for routine
+multi-seed search.
+
 The experiment uses two stages. Screening runs the ESCHER baseline plus sampled
 solver configurations for a reduced budget under matched seeds. Confirmation
 then compares the strongest screening candidates against the ESCHER baseline

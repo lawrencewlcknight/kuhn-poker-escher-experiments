@@ -201,6 +201,15 @@ def safe_stats(values: Iterable[float]) -> Dict[str, float | int]:
     }
 
 
+def cleanup_tensorflow_memory() -> None:
+    """Release Python and Keras/TensorFlow state between independent solver runs."""
+    try:
+        tf.keras.backend.clear_session()
+    except Exception:
+        pass
+    gc.collect()
+
+
 def run_single_seed(
     seed: int,
     config: Dict[str, Any],
@@ -279,6 +288,8 @@ def run_single_seed(
         with open(checkpoint_dir / f"seed_{seed}_final_model.pkl", "wb") as f:
             pickle.dump(solver.extract_full_model(), f)
 
+    del solver
+    cleanup_tensorflow_memory()
     return result
 
 
@@ -467,11 +478,7 @@ def run_single_seed_variant(
             pickle.dump(solver.extract_full_model(), f)
 
     del solver
-    gc.collect()
-    try:
-        tf.keras.backend.clear_session()
-    except Exception:
-        pass
+    cleanup_tensorflow_memory()
 
     return result
 
