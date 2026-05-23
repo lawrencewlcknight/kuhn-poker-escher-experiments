@@ -508,11 +508,39 @@ First describe the job and find its `uid`:
 gcloud batch jobs describe JOB_NAME --location "$REGION"
 ```
 
-Then query task logs using the job UID:
+Then query task logs using the helper script:
+
+```bash
+./gcp/read_batch_task_logs.sh JOB_NAME
+```
+
+You can pass text filters after the job name. The script still scopes the query
+by the exact Batch `labels.job_uid` before applying those filters:
+
+```bash
+./gcp/read_batch_task_logs.sh JOB_NAME ERROR Traceback Killed maxRunDuration
+```
+
+The helper also includes a contamination guard. If any returned line contains an
+`escher-exp...` job name different from the target job, the script prints a
+warning and exits non-zero so you know the log extract should not be trusted.
+
+If you need to run the raw command manually, first describe the job and use its
+exact `uid`:
 
 ```bash
 gcloud logging read \
   'logName="projects/YOUR_PROJECT_ID/logs/batch_task_logs" AND labels.job_uid="JOB_UID"' \
+  --limit=500 \
+  --format="value(timestamp,severity,textPayload,jsonPayload.message)"
+```
+
+When adding text filters manually, keep the UID clause outside and before any
+text-filter expression, for example:
+
+```bash
+gcloud logging read \
+  'logName="projects/YOUR_PROJECT_ID/logs/batch_task_logs" AND labels.job_uid="JOB_UID" AND (textPayload:"ERROR" OR jsonPayload.message:"ERROR")' \
   --limit=500 \
   --format="value(timestamp,severity,textPayload,jsonPayload.message)"
 ```
