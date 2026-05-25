@@ -1,0 +1,28 @@
+status:
+  runDuration: 11108.677129523s
+  state: FAILED
+  statusEvents:
+  - description: Job state is set from QUEUED to SCHEDULED for job projects/556971918429/locations/europe-west1/jobs/escher-exp220260523-022739.
+    eventTime: '2026-05-23T01:27:43.988029630Z'
+    type: STATUS_CHANGED
+  - description: Job state is set from SCHEDULED to RUNNING for job projects/556971918429/locations/europe-west1/jobs/escher-exp220260523-022739.
+    eventTime: '2026-05-23T01:28:42.702444814Z'
+    type: STATUS_CHANGED
+  - description: 'Job state is set from RUNNING to FAILED for job projects/556971918429/locations/europe-west1/jobs/escher-exp220260523-022739.Job
+      failed due to task failure. Specifically, task with index 0 failed due to the
+      following task event: "Task state is updated from RUNNING to FAILED on zones/europe-west1-b/instances/1701305195440159835
+      due to Batch no longer receives VM updates with exit code 50002."'
+    eventTime: '2026-05-23T04:33:51.379574337Z'
+    type: STATUS_CHANGED
+  taskGroups:
+    group0:
+      counts:
+        FAILED: '1'
+      instances:
+      - bootDisk:
+          image: projects/batch-custom-image/global/images/batch-debian-11-official-20260514-00-p00
+          sizeGb: '30'
+          type: pd-balanced
+        machineType: n2-standard-8
+        provisioningModel: STANDARD
+        taskPack: '1'

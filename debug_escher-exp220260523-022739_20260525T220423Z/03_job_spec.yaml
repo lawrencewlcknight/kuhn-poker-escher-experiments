@@ -1,0 +1,93 @@
+allocationPolicy:
+  instances:
+  - policy:
+      machineType: n2-standard-8
+      provisioningModel: STANDARD
+  labels:
+    batch-job-id: escher-exp220260523-022739
+  location:
+    allowedLocations:
+    - regions/europe-west1
+    - zones/europe-west1-b
+    - zones/europe-west1-c
+    - zones/europe-west1-d
+  serviceAccount:
+    email: kuhn-escher-runner@clever-overview-399515.iam.gserviceaccount.com
+logsPolicy:
+  destination: CLOUD_LOGGING
+taskGroups:
+- name: projects/556971918429/locations/europe-west1/jobs/escher-exp220260523-022739/taskGroups/group0
+  parallelism: '1'
+  taskCount: '1'
+  taskSpec:
+    computeResource:
+      cpuMilli: '8000'
+      memoryMib: '32000'
+    maxRunDuration: 172800s
+    runnables:
+    - script:
+        text: |
+          #!/usr/bin/env bash
+          set -euxo pipefail
+
+          export DEBIAN_FRONTEND=noninteractive
+
+          echo "Starting job: escher-exp220260523-022739"
+          echo "Experiment command: python -m experiments.kuhn_poker.escher_intermediate_policy_training_ablation.run     --output-root outputs/cloud/escher-exp2"
+          echo "Requested CPU milli: 8000"
+          echo "Requested memory MiB: 32000"
+
+          if command -v sudo >/dev/null 2>&1; then
+            SUDO=sudo
+          else
+            SUDO=
+          fi
+
+          $SUDO apt-get update
+          $SUDO apt-get install -y git curl ca-certificates python3 python3-pip python3-venv python3-dev build-essential
+
+          WORKDIR=/workspace
+          mkdir -p "$WORKDIR"
+          cd "$WORKDIR"
+
+          git clone --depth 1 https://github.com/lawrencewlcknight/kuhn-poker-escher-experiments.git
+          cd kuhn-poker-escher-experiments
+
+          export HOME="${HOME:-/root}"
+          export TMPDIR="/tmp"
+          export PIP_CACHE_DIR="/tmp/pip-cache"
+          export UV_CACHE_DIR="/tmp/uv-cache"
+          export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+
+          mkdir -p "$HOME" "$TMPDIR" "$PIP_CACHE_DIR" "$UV_CACHE_DIR"
+
+          # Log basic machine information for later VM right-sizing.
+          echo "Machine information:"
+          nproc || true
+          free -h || true
+          df -h || true
+          lscpu | head -30 || true
+
+          # Use Python 3.9 to match the repository metadata and TensorFlow requirements.
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          uv python install 3.9
+          uv venv --python 3.9 --seed /tmp/kuhn-escher-venv
+          source /tmp/kuhn-escher-venv/bin/activate
+          python --version
+
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --no-cache-dir --no-build-isolation -r requirements.txt
+          python -m pip install --no-cache-dir --no-build-isolation -e .
+          python -m pip check || true
+
+          mkdir -p "outputs/cloud/escher-exp220260523-022739"
+
+          python -m experiments.kuhn_poker.escher_intermediate_policy_training_ablation.run     --output-root outputs/cloud/escher-exp2
+
+          deactivate
+
+          echo "Experiment completed. Copying outputs to Cloud Storage."
+          gsutil -m cp -r outputs "gs://clever-overview-399515-kuhn-poker-escher-results/escher-exp220260523-022739/"
+
+          echo "Done."

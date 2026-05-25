@@ -1,0 +1,23 @@
+---
+name: projects/556971918429/locations/europe-west1/jobs/escher-exp220260523-022739/taskGroups/group0/tasks/0
+status:
+  state: FAILED
+  statusEvents:
+  - eventTime: '2026-05-23T01:27:44.017243242Z'
+    taskState: PENDING
+    type: CREATED
+  - description: Task state is updated from PENDING to ASSIGNED on zones/europe-west1-b/instances/1701305195440159835
+    eventTime: '2026-05-23T01:28:42.702440910Z'
+    taskState: ASSIGNED
+    type: CREATED
+  - description: Task state is updated from ASSIGNED to RUNNING on zones/europe-west1-b/instances/1701305195440159835
+    eventTime: '2026-05-23T01:28:42.702444814Z'
+    taskState: RUNNING
+    type: RUNNING
+  - description: Task state is updated from RUNNING to FAILED on zones/europe-west1-b/instances/1701305195440159835
+      due to Batch no longer receives VM updates with exit code 50002.
+    eventTime: '2026-05-23T04:33:51.379574337Z'
+    taskExecution:
+      exitCode: 50002
+    taskState: FAILED
+    type: FAILED
