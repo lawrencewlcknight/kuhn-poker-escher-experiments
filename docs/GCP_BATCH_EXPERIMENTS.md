@@ -182,219 +182,21 @@ echo "$SA_EMAIL"
 
 ## 6. Create the Batch submission script
 
-Create a `gcp` directory in the repository root:
+The repository already includes the maintained submission helper at
+`gcp/submit_batch_experiment.sh`. Use the checked-in script rather than copying a
+stale version from this guide. The helper:
+
+- creates the Batch job JSON;
+- clones the GitHub repo on the Batch VM;
+- installs Python 3.9 dependencies;
+- writes `batch_run.log`, `resource_snapshots.log`, and `batch_status.json`;
+- uploads `outputs/` to Cloud Storage from a cleanup trap on success or failure;
+- uses a configurable boot disk size, defaulting to `100` GiB.
+
+If the script is missing in another checkout, restore it from git:
 
 ```bash
-mkdir -p gcp
-```
-
-Create the script:
-
-```bash
-nano gcp/submit_batch_experiment.sh
-```
-
-Paste the following content into the file:
-
-```bash
-#!/usr/bin/env bash
-set -euxo pipefail
-
-export DEBIAN_FRONTEND=noninteractive
-
-# Usage:
-#   ./gcp/submit_batch_experiment.sh \
-#     JOB_NAME \
-#     "PYTHON_EXPERIMENT_COMMAND" \
-#     MACHINE_TYPE \
-#     MAX_RUN_SECONDS \
-#     CPU_MILLI \
-#     MEMORY_MIB
-#
-# Examples:
-#   n2-standard-2: CPU_MILLI=2000 MEMORY_MIB=8000
-#   n2-standard-4: CPU_MILLI=4000 MEMORY_MIB=16000
-#   n2-standard-8: CPU_MILLI=8000 MEMORY_MIB=32000
-
-JOB_NAME="$1"
-EXPERIMENT_COMMAND="$2"
-MACHINE_TYPE="${3:-n2-standard-4}"
-MAX_RUN_SECONDS="${4:-21600}"
-CPU_MILLI="${5:-4000}"
-MEMORY_MIB="${6:-16000}"
-
-: "${PROJECT_ID:?Set PROJECT_ID first}"
-: "${REGION:?Set REGION first}"
-: "${BUCKET:?Set BUCKET first}"
-: "${SA_EMAIL:?Set SA_EMAIL first}"
-
-JOB_JSON="$(mktemp "/tmp/${JOB_NAME}.XXXXXX.json")"
-
-export JOB_NAME
-export EXPERIMENT_COMMAND
-export MACHINE_TYPE
-export MAX_RUN_SECONDS
-export CPU_MILLI
-export MEMORY_MIB
-export BUCKET
-export SA_EMAIL
-export JOB_JSON
-
-python3 <<'PY'
-import json
-import os
-
-job_json_path = os.environ["JOB_JSON"]
-job_name = os.environ["JOB_NAME"]
-experiment_command = os.environ["EXPERIMENT_COMMAND"]
-machine_type = os.environ["MACHINE_TYPE"]
-max_run_seconds = os.environ["MAX_RUN_SECONDS"]
-cpu_milli = int(os.environ["CPU_MILLI"])
-memory_mib = int(os.environ["MEMORY_MIB"])
-bucket = os.environ["BUCKET"]
-service_account = os.environ["SA_EMAIL"]
-
-script = f"""#!/usr/bin/env bash
-set -euxo pipefail
-
-export DEBIAN_FRONTEND=noninteractive
-
-echo "Starting job: {job_name}"
-echo "Experiment command: {experiment_command}"
-echo "Requested CPU milli: {cpu_milli}"
-echo "Requested memory MiB: {memory_mib}"
-
-if command -v sudo >/dev/null 2>&1; then
-  SUDO=sudo
-else
-  SUDO=
-fi
-
-$SUDO apt-get update
-$SUDO apt-get install -y git curl ca-certificates python3 python3-pip python3-venv python3-dev build-essential
-
-WORKDIR=/workspace
-mkdir -p "$WORKDIR"
-cd "$WORKDIR"
-
-git clone --depth 1 https://github.com/lawrencewlcknight/kuhn-poker-escher-experiments.git
-cd kuhn-poker-escher-experiments
-
-export HOME="${{HOME:-/root}}"
-export TMPDIR="/tmp"
-export PIP_CACHE_DIR="/tmp/pip-cache"
-export UV_CACHE_DIR="/tmp/uv-cache"
-export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
-
-mkdir -p "$HOME" "$TMPDIR" "$PIP_CACHE_DIR" "$UV_CACHE_DIR"
-
-# Log basic machine information for later VM right-sizing.
-echo "Machine information:"
-nproc || true
-free -h || true
-df -h || true
-lscpu | head -30 || true
-
-# Use Python 3.9 to match the repository metadata and TensorFlow requirements.
-curl -LsSf https://astral.sh/uv/install.sh | sh
-export PATH="$HOME/.local/bin:$PATH"
-uv python install 3.9
-uv venv --python 3.9 --seed /tmp/kuhn-escher-venv
-source /tmp/kuhn-escher-venv/bin/activate
-python --version
-
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install --no-cache-dir --no-build-isolation -r requirements.txt
-python -m pip install --no-cache-dir --no-build-isolation -e .
-python -m pip check || true
-
-mkdir -p "outputs/cloud/{job_name}"
-
-{experiment_command}
-
-deactivate
-
-echo "Experiment completed. Copying outputs to Cloud Storage."
-gsutil -m cp -r outputs "{bucket}/{job_name}/"
-
-echo "Done."
-"""
-
-job = {
-    "taskGroups": [
-        {
-            "taskSpec": {
-                "runnables": [
-                    {
-                        "script": {
-                            "text": script
-                        }
-                    }
-                ],
-                "computeResource": {
-                    "cpuMilli": cpu_milli,
-                    "memoryMib": memory_mib,
-                },
-                "maxRetryCount": 0,
-                "maxRunDuration": f"{max_run_seconds}s",
-            },
-            "taskCount": 1,
-            "parallelism": 1,
-        }
-    ],
-    "allocationPolicy": {
-        "serviceAccount": {
-            "email": service_account
-        },
-        "instances": [
-            {
-                "policy": {
-                    "machineType": machine_type,
-                    "provisioningModel": "STANDARD",
-                }
-            }
-        ],
-    },
-    "logsPolicy": {
-        "destination": "CLOUD_LOGGING"
-    },
-}
-
-with open(job_json_path, "w", encoding="utf-8") as f:
-    json.dump(job, f, indent=2)
-PY
-
-echo "Submitting Batch job: ${JOB_NAME}"
-echo "Machine type: ${MACHINE_TYPE}"
-echo "Max run duration: ${MAX_RUN_SECONDS}s"
-echo "CPU milli: ${CPU_MILLI}"
-echo "Memory MiB: ${MEMORY_MIB}"
-echo "Job config: ${JOB_JSON}"
-
-echo
-echo "Script that will run inside Batch:"
-echo "-----------------------------------"
-python3 - "$JOB_JSON" <<'PY'
-import json
-import sys
-
-with open(sys.argv[1], "r", encoding="utf-8") as f:
-    job = json.load(f)
-
-print(job["taskGroups"][0]["taskSpec"]["runnables"][0]["script"]["text"])
-PY
-echo "-----------------------------------"
-echo
-
-gcloud batch jobs submit "${JOB_NAME}" \
-  --location "${REGION}" \
-  --config "${JOB_JSON}"
-
-echo "Submitted."
-echo "Monitor with:"
-echo "  gcloud batch jobs describe ${JOB_NAME} --location ${REGION}"
-echo "Outputs will be copied to:"
-echo "  ${BUCKET}/${JOB_NAME}/"
+git checkout -- gcp/submit_batch_experiment.sh
 ```
 
 Make the script executable and check its syntax:
@@ -548,8 +350,8 @@ gcloud logging read \
 Useful things to look for:
 
 - `All outputs saved to:` shows where the experiment wrote local VM outputs;
-- `Experiment completed. Copying outputs to Cloud Storage.` means the Python
-  experiment returned before upload;
+- `Experiment completed successfully.` means the Python experiment returned
+  before cleanup/upload;
 - `No space left on device` indicates disk pressure;
 - `Killed`, `exit code 137`, or `Out of memory` usually indicates memory pressure;
 - `maxRunDuration` means the job hit the time limit;
@@ -557,6 +359,20 @@ Useful things to look for:
   does not fit the selected machine type;
 - Python version mismatches will usually show up during dependency installation,
   so check for `python --version` and TensorFlow wheel errors.
+
+The submission script also writes durable job diagnostics under
+`outputs/cloud/<JOB_NAME>/` and uploads them in a shell cleanup trap on both
+success and failure:
+
+- `batch_run.log` contains the generated Batch script output captured with
+  `tee`;
+- `resource_snapshots.log` records periodic `df`, `free`, and largest-process
+  snapshots;
+- `batch_status.json` records the job name, exit code, cleanup timestamp, and
+  bucket destination.
+
+If Cloud Logging is empty or incomplete, copy the job folder back from Cloud
+Storage and inspect these files first.
 
 ---
 
@@ -602,13 +418,15 @@ These help determine whether the VM is over- or under-sized.
 
 ---
 
-## 11. Changing CPU and memory
+## 11. Changing CPU, memory, and boot disk
 
-The final three arguments control the VM and Batch task resources:
+The final four arguments control the VM and Batch task resources:
 
 ```bash
-MACHINE_TYPE MAX_RUN_SECONDS CPU_MILLI MEMORY_MIB
+MACHINE_TYPE MAX_RUN_SECONDS CPU_MILLI MEMORY_MIB BOOT_DISK_SIZE_GB
 ```
+
+`BOOT_DISK_SIZE_GB` is optional; omit it to use the script default.
 
 Examples:
 
@@ -621,6 +439,12 @@ Examples:
 The Batch resource request must fit inside the selected machine type. For
 example, do not request `4000` CPU milli and `16000` MiB memory on an
 `n2-standard-2` machine.
+
+The boot disk defaults to `100` GiB in the checked-in submission script. This is
+larger than the default Batch boot disk and gives dependency installation,
+TensorFlow/OpenSpiel caches, intermediate outputs, and failure logs more room.
+For long debugging runs, keep the larger boot disk unless you have evidence that
+disk pressure is not relevant.
 
 ### Smaller VM test
 
@@ -695,8 +519,9 @@ A VM may be too small if:
 | `86400` | 24 hours |
 
 If a job exceeds `MAX_RUN_SECONDS`, Batch stops the task and marks the job as
-failed. If the task is stopped before the final `gsutil` upload step, outputs
-that exist only on the VM may be lost.
+failed. The submission script installs cleanup traps that attempt to upload
+partial outputs and debug logs even on failure, but a hard VM/agent loss can
+still prevent a final upload.
 
 For full experiments, use a generous cap such as 12 or 24 hours unless you are
 deliberately testing runtime behaviour.
@@ -827,11 +652,13 @@ uv venv --python 3.9 --seed /tmp/kuhn-escher-venv
 source /tmp/kuhn-escher-venv/bin/activate
 ```
 
-and deactivates the environment before copying outputs to Cloud Storage:
+and deactivates the environment after the experiment command. Output copying is
+handled by the cleanup trap so it runs after both successful and failed
+experiment commands:
 
 ```bash
-deactivate
-gsutil -m cp -r outputs "$BUCKET_PATH"
+deactivate || true
+# cleanup trap uploads outputs to Cloud Storage
 ```
 
 The script uses `gsutil` rather than `gcloud storage cp` because `gsutil` has
