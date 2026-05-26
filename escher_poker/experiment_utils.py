@@ -318,169 +318,185 @@ def run_single_seed_variant(
     This runner is intended for ablations where final policy quality is always
     measured, but intermediate exploitability checkpoints may be disabled.
     """
-    set_seed_tf(seed)
-    game = pyspiel.load_game(config["game_name"])
-    solver = make_escher_solver(game, config)
+    solver = None
+    game = None
+    try:
+        set_seed_tf(seed)
+        game = pyspiel.load_game(config["game_name"])
+        solver = make_escher_solver(game, config)
 
-    start = time.time()
-    (
-        _regret_losses,
-        policy_loss,
-        convs,
-        nodes_touched,
-        avg_policy_values,
-        diagnostics,
-    ) = solver.solve()
-    elapsed = time.time() - start
+        start = time.time()
+        (
+            _regret_losses,
+            policy_loss,
+            convs,
+            nodes_touched,
+            avg_policy_values,
+            diagnostics,
+        ) = solver.solve()
+        elapsed = time.time() - start
 
-    final_eval = evaluate_final_policy(game, solver)
+        final_eval = evaluate_final_policy(game, solver)
 
-    convs = safe_array(convs)
-    nodes_touched = safe_array(nodes_touched)
-    avg_policy_values = safe_array(avg_policy_values)
-    intermediate_exploitability = convs / 2.0 if convs.size else np.asarray([], dtype=np.float64)
-    intermediate_value_error = (
-        np.abs(avg_policy_values - KUHN_GAME_VALUE_PLAYER_0)
-        if avg_policy_values.size
-        else np.asarray([], dtype=np.float64)
-    )
-    diagnostics = {k: np.asarray(v) for k, v in diagnostics.items()}
+        convs = safe_array(convs)
+        nodes_touched = safe_array(nodes_touched)
+        avg_policy_values = safe_array(avg_policy_values)
+        intermediate_exploitability = (
+            convs / 2.0 if convs.size else np.asarray([], dtype=np.float64)
+        )
+        intermediate_value_error = (
+            np.abs(avg_policy_values - KUHN_GAME_VALUE_PLAYER_0)
+            if avg_policy_values.size
+            else np.asarray([], dtype=np.float64)
+        )
+        diagnostics = {k: np.asarray(v) for k, v in diagnostics.items()}
 
-    iterations = diagnostics.get("iteration", np.asarray([], dtype=int)).astype(int)
-    wall_clock = diagnostics.get(
-        "wall_clock_seconds",
-        np.asarray([], dtype=np.float64),
-    ).astype(float)
-    final_nodes = float(nodes_touched[-1]) if nodes_touched.size else float(solver.get_num_nodes())
-    final_wall_clock = float(wall_clock[-1]) if wall_clock.size else float(elapsed)
+        iterations = diagnostics.get("iteration", np.asarray([], dtype=int)).astype(int)
+        wall_clock = diagnostics.get(
+            "wall_clock_seconds",
+            np.asarray([], dtype=np.float64),
+        ).astype(float)
+        final_nodes = (
+            float(nodes_touched[-1]) if nodes_touched.size else float(solver.get_num_nodes())
+        )
+        final_wall_clock = float(wall_clock[-1]) if wall_clock.size else float(elapsed)
 
-    summary = {
-        "variant_id": config["variant_id"],
-        "variant_label": config["variant_label"],
-        "seed": int(seed),
-        "compute_intermediate_exploitability": bool(config["compute_exploitability"]),
-        "check_exploitability_every": int(config["check_exploitability_every"]),
-        "policy_network_train_steps_per_event": int(config["policy_network_train_steps"]),
-        "intermediate_policy_training_events_expected": int(
-            config["intermediate_policy_training_events_expected"]
-        ),
-        "final_policy_training_events_expected": int(
-            config["final_policy_training_events_expected"]
-        ),
-        "total_policy_training_events_expected": int(
-            config["total_policy_training_events_expected"]
-        ),
-        "policy_gradient_steps_expected": int(config["policy_gradient_steps_expected"]),
-        "elapsed_seconds": float(elapsed),
-        "num_intermediate_points": int(intermediate_exploitability.size),
-        "intermediate_final_exploitability": (
-            float(intermediate_exploitability[-1]) if intermediate_exploitability.size else np.nan
-        ),
-        "intermediate_best_exploitability": (
-            float(np.min(intermediate_exploitability))
-            if intermediate_exploitability.size
-            else np.nan
-        ),
-        "intermediate_final_window_mean_exploitability": final_window_mean(
-            intermediate_exploitability
-        ),
-        "intermediate_exploitability_auc_nodes": auc(nodes_touched, intermediate_exploitability),
-        "intermediate_exploitability_normalised_auc_nodes": normalised_auc(
-            nodes_touched, intermediate_exploitability
-        ),
-        "nodes_to_intermediate_exploitability_threshold": first_nodes_to_threshold(
-            nodes_touched, intermediate_exploitability, config["exploitability_threshold"]
-        ),
-        "seconds_to_intermediate_exploitability_threshold": first_time_to_threshold(
-            wall_clock, intermediate_exploitability, config["exploitability_threshold"]
-        ),
-        "final_nodes_touched": final_nodes,
-        "final_wall_clock_seconds": final_wall_clock,
-        "final_policy_loss": to_float(policy_loss),
-        **final_eval,
-    }
-
-    for key in [
-        "policy_loss",
-        "value_loss",
-        "value_test_loss",
-        "regret_loss_player_0",
-        "regret_loss_player_1",
-        "average_policy_buffer_size",
-        "regret_buffer_size_player_0",
-        "regret_buffer_size_player_1",
-        "value_buffer_size",
-        "value_test_buffer_size",
-    ]:
-        if key in diagnostics and len(diagnostics[key]):
-            value = diagnostics[key][-1]
-            summary[f"last_intermediate_{key}"] = (
-                float(value) if np.issubdtype(np.asarray(value).dtype, np.number) else value
-            )
-        else:
-            summary[f"last_intermediate_{key}"] = np.nan
-
-    curve_rows = []
-    if intermediate_exploitability.size:
-        for idx, (iteration, node_count, wall_time, expl, value, value_err) in enumerate(
-            zip(
-                iterations,
+        summary = {
+            "variant_id": config["variant_id"],
+            "variant_label": config["variant_label"],
+            "seed": int(seed),
+            "compute_intermediate_exploitability": bool(config["compute_exploitability"]),
+            "check_exploitability_every": int(config["check_exploitability_every"]),
+            "policy_network_train_steps_per_event": int(config["policy_network_train_steps"]),
+            "intermediate_policy_training_events_expected": int(
+                config["intermediate_policy_training_events_expected"]
+            ),
+            "final_policy_training_events_expected": int(
+                config["final_policy_training_events_expected"]
+            ),
+            "total_policy_training_events_expected": int(
+                config["total_policy_training_events_expected"]
+            ),
+            "policy_gradient_steps_expected": int(config["policy_gradient_steps_expected"]),
+            "elapsed_seconds": float(elapsed),
+            "num_intermediate_points": int(intermediate_exploitability.size),
+            "intermediate_final_exploitability": (
+                float(intermediate_exploitability[-1])
+                if intermediate_exploitability.size
+                else np.nan
+            ),
+            "intermediate_best_exploitability": (
+                float(np.min(intermediate_exploitability))
+                if intermediate_exploitability.size
+                else np.nan
+            ),
+            "intermediate_final_window_mean_exploitability": final_window_mean(
+                intermediate_exploitability
+            ),
+            "intermediate_exploitability_auc_nodes": auc(
+                nodes_touched, intermediate_exploitability
+            ),
+            "intermediate_exploitability_normalised_auc_nodes": normalised_auc(
+                nodes_touched, intermediate_exploitability
+            ),
+            "nodes_to_intermediate_exploitability_threshold": first_nodes_to_threshold(
                 nodes_touched,
+                intermediate_exploitability,
+                config["exploitability_threshold"],
+            ),
+            "seconds_to_intermediate_exploitability_threshold": first_time_to_threshold(
                 wall_clock,
                 intermediate_exploitability,
-                avg_policy_values,
-                intermediate_value_error,
-            )
-        ):
-            row = {
-                "variant_id": config["variant_id"],
-                "variant_label": config["variant_label"],
-                "seed": int(seed),
-                "checkpoint_index": int(idx),
-                "iteration": int(iteration),
-                "nodes_touched": float(node_count),
-                "wall_clock_seconds": float(wall_time),
-                "exploitability": float(expl),
-                "average_policy_value": float(value),
-                "policy_value_error": float(value_err),
-                "is_final_policy_evaluation": False,
-            }
-            for key, arr in diagnostics.items():
-                if len(arr) > idx:
-                    row[key] = to_float(arr[idx])
-            curve_rows.append(row)
+                config["exploitability_threshold"],
+            ),
+            "final_nodes_touched": final_nodes,
+            "final_wall_clock_seconds": final_wall_clock,
+            "final_policy_loss": to_float(policy_loss),
+            **final_eval,
+        }
 
-    curve_rows.append({
-        "variant_id": config["variant_id"],
-        "variant_label": config["variant_label"],
-        "seed": int(seed),
-        "checkpoint_index": int(len(curve_rows)),
-        "iteration": int(config["num_iterations"]),
-        "nodes_touched": final_nodes,
-        "wall_clock_seconds": final_wall_clock,
-        "exploitability": float(final_eval["final_exploitability"]),
-        "average_policy_value": float(final_eval["final_policy_value"]),
-        "policy_value_error": float(final_eval["final_policy_value_error"]),
-        "is_final_policy_evaluation": True,
-    })
+        for key in [
+            "policy_loss",
+            "value_loss",
+            "value_test_loss",
+            "regret_loss_player_0",
+            "regret_loss_player_1",
+            "average_policy_buffer_size",
+            "regret_buffer_size_player_0",
+            "regret_buffer_size_player_1",
+            "value_buffer_size",
+            "value_test_buffer_size",
+        ]:
+            if key in diagnostics and len(diagnostics[key]):
+                value = diagnostics[key][-1]
+                summary[f"last_intermediate_{key}"] = (
+                    float(value) if np.issubdtype(np.asarray(value).dtype, np.number) else value
+                )
+            else:
+                summary[f"last_intermediate_{key}"] = np.nan
 
-    result = {
-        "seed": int(seed),
-        "variant_id": config["variant_id"],
-        "summary": summary,
-        "curves": curve_rows,
-    }
+        curve_rows = []
+        if intermediate_exploitability.size:
+            for idx, (iteration, node_count, wall_time, expl, value, value_err) in enumerate(
+                zip(
+                    iterations,
+                    nodes_touched,
+                    wall_clock,
+                    intermediate_exploitability,
+                    avg_policy_values,
+                    intermediate_value_error,
+                )
+            ):
+                row = {
+                    "variant_id": config["variant_id"],
+                    "variant_label": config["variant_label"],
+                    "seed": int(seed),
+                    "checkpoint_index": int(idx),
+                    "iteration": int(iteration),
+                    "nodes_touched": float(node_count),
+                    "wall_clock_seconds": float(wall_time),
+                    "exploitability": float(expl),
+                    "average_policy_value": float(value),
+                    "policy_value_error": float(value_err),
+                    "is_final_policy_evaluation": False,
+                }
+                for key, arr in diagnostics.items():
+                    if len(arr) > idx:
+                        row[key] = to_float(arr[idx])
+                curve_rows.append(row)
 
-    if bool(config.get("save_final_checkpoints", False)) and export_dir is not None:
-        checkpoint_dir = Path(export_dir) / "checkpoints" / config["variant_id"]
-        checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        with open(checkpoint_dir / f"seed_{seed}_final_model.pkl", "wb") as f:
-            pickle.dump(solver.extract_full_model(), f)
+        curve_rows.append({
+            "variant_id": config["variant_id"],
+            "variant_label": config["variant_label"],
+            "seed": int(seed),
+            "checkpoint_index": int(len(curve_rows)),
+            "iteration": int(config["num_iterations"]),
+            "nodes_touched": final_nodes,
+            "wall_clock_seconds": final_wall_clock,
+            "exploitability": float(final_eval["final_exploitability"]),
+            "average_policy_value": float(final_eval["final_policy_value"]),
+            "policy_value_error": float(final_eval["final_policy_value_error"]),
+            "is_final_policy_evaluation": True,
+        })
 
-    del solver
-    cleanup_tensorflow_memory()
+        result = {
+            "seed": int(seed),
+            "variant_id": config["variant_id"],
+            "summary": summary,
+            "curves": curve_rows,
+        }
 
-    return result
+        if bool(config.get("save_final_checkpoints", False)) and export_dir is not None:
+            checkpoint_dir = Path(export_dir) / "checkpoints" / config["variant_id"]
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            with open(checkpoint_dir / f"seed_{seed}_final_model.pkl", "wb") as f:
+                pickle.dump(solver.extract_full_model(), f)
+
+        return result
+    finally:
+        del solver
+        del game
+        cleanup_tensorflow_memory()
 
 
 def export_metadata(run_dir: Path, config: Dict[str, Any], seeds: List[int]) -> None:

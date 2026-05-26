@@ -360,24 +360,31 @@ def main(argv: Optional[List[str]] = None) -> int:
     failures = []
     for variant in variants:
         config = make_variant_config(base_config, variant)
-        _LOGGER.info(
-            "Running %s (%s expected policy-gradient steps)",
-            config["variant_id"],
-            config["policy_gradient_steps_expected"],
-        )
-        for seed in tqdm(seeds, desc=config["variant_id"]):
-            try:
-                results.append(run_single_seed_variant(seed, config, export_dir=run_dir))
-            except Exception as exc:  # pragma: no cover - operational robustness
-                _LOGGER.error("Variant %s seed %s failed: %s", config["variant_id"], seed, exc)
-                failures.append({
-                    "variant_id": config["variant_id"],
-                    "seed": seed,
-                    "error": str(exc),
-                    "traceback": traceback.format_exc(),
-                })
-            finally:
-                cleanup_tensorflow_memory()
+        try:
+            _LOGGER.info(
+                "Running %s (%s expected policy-gradient steps)",
+                config["variant_id"],
+                config["policy_gradient_steps_expected"],
+            )
+            for seed in tqdm(seeds, desc=config["variant_id"]):
+                result = None
+                try:
+                    result = run_single_seed_variant(seed, config, export_dir=run_dir)
+                    results.append(result)
+                except Exception as exc:  # pragma: no cover - operational robustness
+                    _LOGGER.error("Variant %s seed %s failed: %s", config["variant_id"], seed, exc)
+                    failures.append({
+                        "variant_id": config["variant_id"],
+                        "seed": seed,
+                        "error": str(exc),
+                        "traceback": traceback.format_exc(),
+                    })
+                finally:
+                    del result
+                    cleanup_tensorflow_memory()
+        finally:
+            del config
+            cleanup_tensorflow_memory()
 
     if failures:
         with open(run_dir / "failed_runs.json", "w", encoding="utf-8") as f:
