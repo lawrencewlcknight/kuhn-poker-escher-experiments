@@ -47,10 +47,12 @@ export JOB_JSON
 python3 <<'PY'
 import json
 import os
+import shlex
 
 job_json_path = os.environ["JOB_JSON"]
 job_name = os.environ["JOB_NAME"]
 experiment_command = os.environ["EXPERIMENT_COMMAND"]
+experiment_command_literal = shlex.quote(experiment_command)
 machine_type = os.environ["MACHINE_TYPE"]
 max_run_seconds = os.environ["MAX_RUN_SECONDS"]
 cpu_milli = int(os.environ["CPU_MILLI"])
@@ -66,6 +68,7 @@ export DEBIAN_FRONTEND=noninteractive
 export PYTHONUNBUFFERED=1
 export PYTHONFAULTHANDLER=1
 export TF_CPP_MIN_LOG_LEVEL=1
+EXPERIMENT_COMMAND={experiment_command_literal}
 
 WORKDIR=/workspace
 REPO_DIR="$WORKDIR/kuhn-poker-escher-experiments"
@@ -79,7 +82,7 @@ RESOURCE_MONITOR_PID=""
 exec > >(tee -a "$BOOT_LOG") 2>&1
 
 echo "Starting job: {job_name}"
-echo "Experiment command: {experiment_command}"
+echo "Experiment command: $EXPERIMENT_COMMAND"
 echo "Requested CPU milli: {cpu_milli}"
 echo "Requested memory MiB: {memory_mib}"
 echo "Requested boot disk GiB: {boot_disk_size_gb}"
@@ -159,6 +162,18 @@ start_resource_monitor() {{
   echo "Started resource monitor with PID $RESOURCE_MONITOR_PID"
 }}
 
+run_experiment() {{
+  local command_exit=0
+
+  echo "Starting experiment command at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  set +e
+  bash -o pipefail -c "$EXPERIMENT_COMMAND"
+  command_exit="$?"
+  set -e
+  echo "Experiment command exit code: $command_exit"
+  return "$command_exit"
+}}
+
 if command -v sudo >/dev/null 2>&1; then
   SUDO=sudo
 else
@@ -166,7 +181,7 @@ else
 fi
 
 $SUDO apt-get update
-$SUDO apt-get install -y git curl ca-certificates python3 python3-pip python3-venv python3-dev build-essential
+$SUDO apt-get install -y git curl ca-certificates python3 python3-pip python3-venv python3-dev build-essential time
 
 mkdir -p "$WORKDIR"
 cd "$WORKDIR"
@@ -212,9 +227,18 @@ python -m pip check || true
 mkdir -p "$JOB_OUTPUT_DIR"
 start_resource_monitor
 
-{experiment_command}
+if run_experiment; then
+  experiment_exit=0
+else
+  experiment_exit="$?"
+fi
 
 deactivate || true
+
+if [[ "$experiment_exit" -ne 0 ]]; then
+  echo "Experiment failed with exit code $experiment_exit"
+  exit "$experiment_exit"
+fi
 
 echo "Experiment completed successfully."
 """

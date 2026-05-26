@@ -189,6 +189,8 @@ stale version from this guide. The helper:
 - creates the Batch job JSON;
 - clones the GitHub repo on the Batch VM;
 - installs Python 3.9 dependencies;
+- installs Debian's `time` package so `/usr/bin/time -v` diagnostics work;
+- fails the Batch task if the experiment command exits non-zero;
 - writes `batch_run.log`, `resource_snapshots.log`, and `batch_status.json`;
 - uploads `outputs/` to Cloud Storage from a cleanup trap on success or failure;
 - uses a configurable boot disk size, defaulting to `100` GiB.
@@ -350,8 +352,10 @@ gcloud logging read \
 Useful things to look for:
 
 - `All outputs saved to:` shows where the experiment wrote local VM outputs;
-- `Experiment completed successfully.` means the Python experiment returned
-  before cleanup/upload;
+- `Experiment command exit code: 0` and `Experiment completed successfully.`
+  mean the Python experiment returned before cleanup/upload;
+- `Experiment failed with exit code ...` means the experiment command failed,
+  but the cleanup trap still attempted to upload partial outputs and logs;
 - `No space left on device` indicates disk pressure;
 - `Killed`, `exit code 137`, or `Out of memory` usually indicates memory pressure;
 - `maxRunDuration` means the job hit the time limit;
