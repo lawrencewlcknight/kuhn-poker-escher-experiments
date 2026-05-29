@@ -9,9 +9,10 @@ import json
 import logging
 import os
 from pathlib import Path
+import subprocess
 import sys
 import traceback
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 # Keep execution CPU-only by default for reproducibility unless explicitly overridden.
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
@@ -165,6 +166,29 @@ def _write_csv(path: Path, rows: List[Dict[str, Any]], preferred_fields: Iterabl
         writer.writerows(json_safe(rows))
 
 
+def _write_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(json_safe(payload), f, indent=2)
+
+
+def _append_jsonl(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(json_safe(payload), sort_keys=True))
+        f.write("\n")
+
+
+def _append_partial_result(run_dir: Path, result: Dict[str, Any]) -> None:
+    _append_jsonl(run_dir / "partial_seed_summary.jsonl", result["summary"])
+    for row in result["curves"]:
+        _append_jsonl(run_dir / "partial_checkpoint_curves.jsonl", row)
+
+
+def _write_failures(run_dir: Path, failures: List[Dict[str, Any]]) -> None:
+    _write_json(run_dir / "failed_runs.json", failures)
+
+
 def _summarise_by_variant(summary_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     aggregate_rows = []
     variant_ids = sorted({row["variant_id"] for row in summary_rows})
@@ -257,6 +281,8 @@ def _export_metadata(
     base_config: Dict[str, Any],
     variants: List[Dict[str, Any]],
     seeds: List[int],
+    *,
+    subprocess_isolation_enabled: bool,
 ) -> None:
     metadata = {
         "config": base_config,
@@ -271,6 +297,13 @@ def _export_metadata(
         "intermediate_policy_events": count_intermediate_policy_events(base_config),
         "baseline_total_policy_events": baseline_total_policy_events(base_config),
         "matched_total_policy_steps": matched_total_policy_steps(base_config),
+        "subprocess_isolation_enabled": bool(subprocess_isolation_enabled),
+        "incremental_outputs": {
+            "partial_seed_summary_jsonl": "partial_seed_summary.jsonl",
+            "partial_checkpoint_curves_jsonl": "partial_checkpoint_curves.jsonl",
+            "worker_results_dir": "worker_results",
+            "worker_logs_dir": "worker_logs",
+        },
         "experiment_note": (
             "Controlled ablation comparing the ESCHER baseline's intermediate "
             "policy-network training/evaluation path with final-only average-policy "
@@ -279,6 +312,89 @@ def _export_metadata(
     }
     with open(run_dir / "experiment_metadata.json", "w", encoding="utf-8") as f:
         json.dump(json_safe(metadata), f, indent=2)
+
+
+def _worker_stem(variant_id: str, seed: int) -> str:
+    return f"{variant_id}_seed_{int(seed)}"
+
+
+def _run_worker(
+    worker_input_json: Union[str, Path],
+    worker_output_json: Union[str, Path],
+) -> int:
+    input_path = Path(worker_input_json)
+    output_path = Path(worker_output_json)
+    with open(input_path, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+
+    result = run_single_seed_variant(
+        int(payload["seed"]),
+        payload["config"],
+        export_dir=payload.get("export_dir"),
+    )
+    _write_json(output_path, result)
+    return 0
+
+
+def _run_seed_variant_subprocess(
+    seed: int,
+    config: Dict[str, Any],
+    run_dir: Path,
+) -> Dict[str, Any]:
+    stem = _worker_stem(str(config["variant_id"]), seed)
+    worker_input = run_dir / "worker_inputs" / f"{stem}.json"
+    worker_output = run_dir / "worker_results" / f"{stem}.json"
+    worker_log = run_dir / "worker_logs" / f"{stem}.log"
+
+    _write_json(worker_input, {
+        "seed": int(seed),
+        "config": config,
+        "export_dir": str(run_dir),
+    })
+
+    command = [
+        sys.executable,
+        "-m",
+        "experiments.kuhn_poker.escher_intermediate_policy_training_ablation.run",
+        "--worker-input-json",
+        str(worker_input),
+        "--worker-output-json",
+        str(worker_output),
+    ]
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    worker_log.parent.mkdir(parents=True, exist_ok=True)
+    with open(worker_log, "w", encoding="utf-8") as log_file:
+        completed = subprocess.run(
+            command,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
+        )
+
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"Worker failed with exit code {completed.returncode}. "
+            f"See {worker_log} for details."
+        )
+    if not worker_output.exists():
+        raise RuntimeError(f"Worker completed without writing {worker_output}")
+
+    with open(worker_output, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _run_seed_variant(
+    seed: int,
+    config: Dict[str, Any],
+    run_dir: Path,
+    *,
+    subprocess_isolation_enabled: bool,
+) -> Dict[str, Any]:
+    if subprocess_isolation_enabled:
+        return _run_seed_variant_subprocess(seed, config, run_dir)
+    return run_single_seed_variant(seed, config, export_dir=run_dir)
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -331,11 +447,28 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--save-final-checkpoints", type=_str2bool, default=None)
     parser.add_argument("--experiment-name", default=None)
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging.")
+    parser.add_argument(
+        "--disable-subprocess-isolation",
+        action="store_true",
+        help=(
+            "Run seed/variant jobs in the parent process. By default each seed/variant "
+            "is executed in a fresh Python worker so TensorFlow memory is released."
+        ),
+    )
+    parser.add_argument("--worker-input-json", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--worker-output-json", default=None, help=argparse.SUPPRESS)
     return parser
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    args = _build_arg_parser().parse_args(argv)
+    parser = _build_arg_parser()
+    args = parser.parse_args(argv)
+    if args.worker_input_json or args.worker_output_json:
+        if not args.worker_input_json or not args.worker_output_json:
+            parser.error("--worker-input-json and --worker-output-json must be used together")
+        return _run_worker(args.worker_input_json, args.worker_output_json)
+
+    subprocess_isolation_enabled = not args.disable_subprocess_isolation
     base_config = build_config(args)
     all_variants = build_policy_training_variants(base_config)
     variant_ids = parse_variant_ids(args.variant_ids)
@@ -349,11 +482,18 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     run_dir = create_run_dir(args.output_root, base_config["experiment_name"])
     _configure_logging(run_dir, args.verbose)
-    _export_metadata(run_dir, base_config, variants, seeds)
+    _export_metadata(
+        run_dir,
+        base_config,
+        variants,
+        seeds,
+        subprocess_isolation_enabled=subprocess_isolation_enabled,
+    )
 
     _LOGGER.info("Export directory: %s", run_dir.resolve())
     _LOGGER.info("Running seeds: %s", seeds)
     _LOGGER.info("Running variants: %s", [variant["variant_id"] for variant in variants])
+    _LOGGER.info("Subprocess isolation enabled: %s", subprocess_isolation_enabled)
     _LOGGER.info("Base config: %s", base_config)
 
     results = []
@@ -369,8 +509,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             for seed in tqdm(seeds, desc=config["variant_id"]):
                 result = None
                 try:
-                    result = run_single_seed_variant(seed, config, export_dir=run_dir)
+                    result = _run_seed_variant(
+                        seed,
+                        config,
+                        run_dir,
+                        subprocess_isolation_enabled=subprocess_isolation_enabled,
+                    )
                     results.append(result)
+                    _append_partial_result(run_dir, result)
                 except Exception as exc:  # pragma: no cover - operational robustness
                     _LOGGER.error("Variant %s seed %s failed: %s", config["variant_id"], seed, exc)
                     failures.append({
@@ -379,6 +525,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "error": str(exc),
                         "traceback": traceback.format_exc(),
                     })
+                    _write_failures(run_dir, failures)
                 finally:
                     del result
                     cleanup_tensorflow_memory()
@@ -387,8 +534,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             cleanup_tensorflow_memory()
 
     if failures:
-        with open(run_dir / "failed_runs.json", "w", encoding="utf-8") as f:
-            json.dump(failures, f, indent=2)
+        _write_failures(run_dir, failures)
 
     if not results:
         _LOGGER.error("No variant/seed runs completed successfully.")

@@ -14,6 +14,13 @@ from experiments.kuhn_poker.escher_multiseed_baseline.config import (
 DEFAULT_CONFIG = deepcopy(BASELINE_DEFAULT_CONFIG)
 DEFAULT_CONFIG.update({
     "experiment_name": "kuhn_poker_escher_intermediate_policy_training_ablation",
+    # This ablation repeatedly trains average-policy networks as part of the
+    # treatment itself. Keep the ESCHER regret/value training aligned with the
+    # baseline, but use a lighter policy-extraction diagnostic budget so the
+    # full three-arm experiment remains practical on Kuhn poker.
+    "check_exploitability_every": 20,
+    "batch_size_average_policy": 512,
+    "policy_network_train_steps": 100,
 })
 
 REFERENCE_VARIANT_ID = "intermediate_checkpoint_baseline"

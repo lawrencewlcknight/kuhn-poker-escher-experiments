@@ -10,7 +10,13 @@ In this implementation, exploitability can only be computed for a playable polic
 - `final_only_single_event_steps` — disables intermediate exploitability checks and trains the average-policy network once at the end for the usual single-event budget.
 - `final_only_matched_steps` — disables intermediate exploitability checks and trains once at the end with the same total policy-gradient step budget used by the baseline arm.
 
-The default ESCHER regret/history-value configuration and seed set are inherited from `escher_multiseed_baseline`.
+The ESCHER regret/history-value configuration and seed set are inherited from `escher_multiseed_baseline`. Because this experiment deliberately repeats average-policy fitting during the baseline arm, its default policy-extraction diagnostic budget is lighter than Experiment 1:
+
+- intermediate exploitability is checked every 20 ESCHER iterations;
+- average-policy training uses batch size 512;
+- each policy-network training event uses 100 steps.
+
+These settings keep the regret/value training specification aligned while preventing repeated diagnostic policy fitting from dominating a small Kuhn poker experiment.
 
 ## Run
 
@@ -18,6 +24,13 @@ From the repository root:
 
 ```bash
 python -m experiments.kuhn_poker.escher_intermediate_policy_training_ablation.run
+```
+
+By default, each seed/variant is run in a fresh Python worker process so TensorFlow solver/network/replay state is released when that run finishes. For local debugging only, this can be disabled:
+
+```bash
+python -m experiments.kuhn_poker.escher_intermediate_policy_training_ablation.run \
+  --disable-subprocess-isolation
 ```
 
 Quick smoke test:
@@ -52,6 +65,10 @@ python -m experiments.kuhn_poker.escher_intermediate_policy_training_ablation.ru
 - `paired_difference_summary.csv`
 - `paired_difference_summary.json`
 - `experiment_metadata.json`
+- `partial_seed_summary.jsonl`
+- `partial_checkpoint_curves.jsonl`
+- `worker_results/`
+- `worker_logs/`
 - `final_exploitability_by_variant.png`
 - `final_policy_value_error_by_variant.png`
 - `runtime_by_variant.png`
