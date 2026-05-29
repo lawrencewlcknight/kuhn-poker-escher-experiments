@@ -9,8 +9,10 @@ import json
 import logging
 import os
 from pathlib import Path
+import subprocess
 import sys
-from typing import Any, Dict, Iterable, List, Optional
+import traceback
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 # Keep execution CPU-only by default for reproducibility unless explicitly overridden.
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
@@ -36,6 +38,7 @@ from escher_poker.constants import (  # noqa: E402
 from escher_poker.experiment_utils import create_run_dir, json_safe  # noqa: E402
 from escher_poker.hyperparameter_search import (  # noqa: E402
     aggregate_summaries,
+    config_subset,
     paired_differences_vs_baseline,
     run_single_hyperparameter_seed,
     select_confirmation_variants,
@@ -137,12 +140,229 @@ def _write_csv(path: Path, rows: List[Dict[str, Any]], preferred_fields: Iterabl
         writer.writerows(json_safe(rows))
 
 
+def _write_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(json_safe(payload), f, indent=2)
+
+
+def _append_jsonl(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(json_safe(payload), sort_keys=True))
+        f.write("\n")
+
+
+def _safe_float(value: Any) -> float:
+    if value is None:
+        return np.nan
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return np.nan
+
+
+def _stage_iterations(config: Dict[str, Any]) -> List[int]:
+    num_iterations = int(config["num_iterations"])
+    interval = max(1, int(config["check_exploitability_every"]))
+    iterations = list(range(0, num_iterations + 1, interval))
+    if not iterations or iterations[-1] != num_iterations:
+        iterations.append(num_iterations)
+    return iterations
+
+
+def _failed_result(
+    seed: int,
+    config: Dict[str, Any],
+    stage_name: str,
+    error: str,
+) -> Dict[str, Any]:
+    iterations = _stage_iterations(config)
+    n_points = len(iterations)
+    summary = {
+        "stage": stage_name,
+        "variant_id": config["variant_id"],
+        "seed": int(seed),
+        "status": "failed",
+        "error": error,
+        "final_exploitability": np.nan,
+        "best_exploitability": np.nan,
+        "final_window_mean_exploitability": np.nan,
+        "exploitability_auc": np.nan,
+        "final_policy_value": np.nan,
+        "final_policy_value_error": np.nan,
+        "best_policy_value_error": np.nan,
+        "final_nodes_touched": np.nan,
+        "final_wall_clock_seconds": np.nan,
+        "nodes_to_exploitability_threshold": np.nan,
+        "seconds_to_exploitability_threshold": np.nan,
+        "final_policy_loss": np.nan,
+        "final_value_loss": np.nan,
+        "final_value_test_loss": np.nan,
+        "final_regret_loss_player_0": np.nan,
+        "final_regret_loss_player_1": np.nan,
+        "final_nash_conv_recomputed": np.nan,
+    }
+    summary.update({
+        f"hp_{key}": json.dumps(value) if isinstance(value, list) else value
+        for key, value in config_subset(config).items()
+    })
+    return {
+        "stage": stage_name,
+        "variant_id": config["variant_id"],
+        "seed": int(seed),
+        "config": dict(config),
+        "iterations": iterations,
+        "nodes_touched": [np.nan] * n_points,
+        "wall_clock_seconds": [np.nan] * n_points,
+        "exploitability": [np.nan] * n_points,
+        "average_policy_value": [np.nan] * n_points,
+        "policy_value_error": [np.nan] * n_points,
+        "diagnostics": {},
+        "summary": summary,
+    }
+
+
+def _normalise_failed_result_shape(result: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
+    if result.get("summary", {}).get("status") != "failed":
+        return result
+    iterations = _stage_iterations(config)
+    n_points = len(iterations)
+    result["iterations"] = iterations
+    for key in [
+        "nodes_touched",
+        "wall_clock_seconds",
+        "exploitability",
+        "average_policy_value",
+        "policy_value_error",
+    ]:
+        result[key] = [np.nan] * n_points
+    result.setdefault("diagnostics", {})
+    return result
+
+
+def _append_partial_result(run_dir: Path, result: Dict[str, Any]) -> None:
+    stage_name = result["stage"]
+    _append_jsonl(run_dir / f"partial_{stage_name}_seed_summary.jsonl", result["summary"])
+    for row in _curve_rows([result]):
+        _append_jsonl(run_dir / "partial_checkpoint_curves.jsonl", row)
+
+
+def _write_failures(run_dir: Path, failures: List[Dict[str, Any]]) -> None:
+    _write_json(run_dir / "failed_runs.json", failures)
+
+
+def _record_failure(
+    run_dir: Path,
+    failures: List[Dict[str, Any]],
+    *,
+    config: Dict[str, Any],
+    seed: int,
+    stage_name: str,
+    error: str,
+    traceback_text: str = "",
+) -> None:
+    failures.append({
+        "stage": stage_name,
+        "variant_id": config["variant_id"],
+        "seed": int(seed),
+        "error": error,
+        "traceback": traceback_text,
+    })
+    _write_failures(run_dir, failures)
+
+
+def _worker_stem(stage_name: str, variant_id: str, seed: int) -> str:
+    return f"{stage_name}_{variant_id}_seed_{int(seed)}"
+
+
+def _run_worker(
+    worker_input_json: Union[str, Path],
+    worker_output_json: Union[str, Path],
+) -> int:
+    with open(worker_input_json, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+    result = run_single_hyperparameter_seed(
+        int(payload["seed"]),
+        payload["config"],
+        str(payload["stage_name"]),
+    )
+    _write_json(Path(worker_output_json), result)
+    return 0
+
+
+def _run_hyperparameter_seed_subprocess(
+    seed: int,
+    config: Dict[str, Any],
+    stage_name: str,
+    run_dir: Path,
+) -> Dict[str, Any]:
+    stem = _worker_stem(stage_name, str(config["variant_id"]), seed)
+    worker_input = run_dir / "worker_inputs" / f"{stem}.json"
+    worker_output = run_dir / "worker_results" / f"{stem}.json"
+    worker_log = run_dir / "worker_logs" / f"{stem}.log"
+    _write_json(worker_input, {
+        "seed": int(seed),
+        "stage_name": stage_name,
+        "config": config,
+    })
+
+    command = [
+        sys.executable,
+        "-m",
+        "experiments.kuhn_poker.escher_constrained_hyperparameter_search.run",
+        "--worker-input-json",
+        str(worker_input),
+        "--worker-output-json",
+        str(worker_output),
+    ]
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    worker_log.parent.mkdir(parents=True, exist_ok=True)
+    with open(worker_log, "w", encoding="utf-8") as log_file:
+        completed = subprocess.run(
+            command,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
+        )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"Worker failed with exit code {completed.returncode}. "
+            f"See {worker_log} for details."
+        )
+    if not worker_output.exists():
+        raise RuntimeError(f"Worker completed without writing {worker_output}")
+    with open(worker_output, "r", encoding="utf-8") as f:
+        result = json.load(f)
+    return _normalise_failed_result_shape(result, config)
+
+
+def _run_hyperparameter_seed(
+    seed: int,
+    config: Dict[str, Any],
+    stage_name: str,
+    run_dir: Path,
+    *,
+    subprocess_isolation_enabled: bool,
+) -> Dict[str, Any]:
+    if subprocess_isolation_enabled:
+        return _run_hyperparameter_seed_subprocess(seed, config, stage_name, run_dir)
+    result = run_single_hyperparameter_seed(seed, config, stage_name)
+    return _normalise_failed_result_shape(result, config)
+
+
 def _run_stage(
     configs: List[Dict[str, Any]],
     seeds: List[int],
     stage_name: str,
     num_iterations: int,
     evaluation_interval: int,
+    run_dir: Path,
+    failures: List[Dict[str, Any]],
+    *,
+    subprocess_isolation_enabled: bool,
 ) -> List[Dict[str, Any]]:
     stage_results = []
     for config in tqdm(configs, desc=f"{stage_name} variants"):
@@ -154,14 +374,52 @@ def _run_stage(
         )
         for seed in tqdm(seeds, desc=stage_config["variant_id"], leave=False):
             _LOGGER.info("Running %s seed=%s stage=%s", stage_config["variant_id"], seed, stage_name)
-            stage_results.append(run_single_hyperparameter_seed(seed, stage_config, stage_name))
+            try:
+                result = _run_hyperparameter_seed(
+                    seed,
+                    stage_config,
+                    stage_name,
+                    run_dir,
+                    subprocess_isolation_enabled=subprocess_isolation_enabled,
+                )
+            except Exception as exc:  # pragma: no cover - operational robustness
+                error = str(exc)
+                _LOGGER.error(
+                    "variant=%s seed=%s stage=%s failed: %s",
+                    stage_config["variant_id"],
+                    seed,
+                    stage_name,
+                    error,
+                )
+                _record_failure(
+                    run_dir,
+                    failures,
+                    config=stage_config,
+                    seed=seed,
+                    stage_name=stage_name,
+                    error=error,
+                    traceback_text=traceback.format_exc(),
+                )
+                result = _failed_result(seed, stage_config, stage_name, error)
+            else:
+                if result["summary"].get("status") != "completed":
+                    _record_failure(
+                        run_dir,
+                        failures,
+                        config=stage_config,
+                        seed=seed,
+                        stage_name=stage_name,
+                        error=str(result["summary"].get("error", "solver reported failure")),
+                    )
+            stage_results.append(result)
+            _append_partial_result(run_dir, result)
     return stage_results
 
 
 def _curve_rows(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     rows = []
     for result in results:
-        diagnostics = result["diagnostics"]
+        diagnostics = result.get("diagnostics") or {}
         for idx, iteration in enumerate(result["iterations"]):
             row = {
                 "stage": result["stage"],
@@ -169,23 +427,23 @@ def _curve_rows(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "seed": result["seed"],
                 "iteration": int(iteration),
                 "nodes_touched": (
-                    float(result["nodes_touched"][idx])
+                    _safe_float(result["nodes_touched"][idx])
                     if idx < len(result["nodes_touched"])
                     else np.nan
                 ),
                 "wall_clock_seconds": (
-                    float(result["wall_clock_seconds"][idx])
+                    _safe_float(result["wall_clock_seconds"][idx])
                     if idx < len(result["wall_clock_seconds"])
                     else np.nan
                 ),
-                "exploitability": float(result["exploitability"][idx]),
+                "exploitability": _safe_float(result["exploitability"][idx]),
                 "average_policy_value": (
-                    float(result["average_policy_value"][idx])
+                    _safe_float(result["average_policy_value"][idx])
                     if idx < len(result["average_policy_value"])
                     else np.nan
                 ),
                 "policy_value_error": (
-                    float(result["policy_value_error"][idx])
+                    _safe_float(result["policy_value_error"][idx])
                     if idx < len(result["policy_value_error"])
                     else np.nan
                 ),
@@ -199,7 +457,7 @@ def _curve_rows(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             ]:
                 arr = diagnostics.get(key)
                 if arr is not None and len(arr) > idx:
-                    row[key] = float(arr[idx])
+                    row[key] = _safe_float(arr[idx])
             rows.append(row)
     return rows
 
@@ -430,6 +688,55 @@ def _plot_outputs(
     )
 
 
+def _write_metadata(
+    run_dir: Path,
+    *,
+    base_config: Dict[str, Any],
+    screening_configs: List[Dict[str, Any]],
+    confirmation_configs: List[Dict[str, Any]],
+    selected_variant_ids: List[str],
+    screening_seeds: List[int],
+    confirmation_seeds: List[int],
+    screening_iterations: int,
+    screening_evaluation_interval: int,
+    confirmation_iterations: int,
+    confirmation_evaluation_interval: int,
+    confirmation_top_k: int,
+    random_search_seed: int,
+    subprocess_isolation_enabled: bool,
+    status: str,
+) -> None:
+    metadata = {
+        "experiment_name": base_config["experiment_name"],
+        "baseline_variant_id": BASELINE_VARIANT_ID,
+        "baseline_config": base_config,
+        "screening_iterations": screening_iterations,
+        "screening_evaluation_interval": screening_evaluation_interval,
+        "screening_seeds": screening_seeds,
+        "confirmation_iterations": confirmation_iterations,
+        "confirmation_evaluation_interval": confirmation_evaluation_interval,
+        "confirmation_seeds": confirmation_seeds,
+        "confirmation_top_k": confirmation_top_k,
+        "selected_variant_ids": selected_variant_ids,
+        "screening_configs": screening_configs,
+        "confirmation_configs": confirmation_configs,
+        "random_search_seed": random_search_seed,
+        "subprocess_isolation_enabled": bool(subprocess_isolation_enabled),
+        "incremental_outputs": {
+            "partial_screening_seed_summary_jsonl": "partial_screening_seed_summary.jsonl",
+            "partial_confirmation_seed_summary_jsonl": "partial_confirmation_seed_summary.jsonl",
+            "partial_checkpoint_curves_jsonl": "partial_checkpoint_curves.jsonl",
+            "worker_results_dir": "worker_results",
+            "worker_logs_dir": "worker_logs",
+        },
+        "status": status,
+        "kuhn_game_value_player_0": KUHN_GAME_VALUE_PLAYER_0,
+        "tensorflow_version": tf.__version__,
+        "pyspiel_version": getattr(pyspiel, "__version__", "unknown"),
+    }
+    _write_json(run_dir / "experiment_metadata.json", metadata)
+
+
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run the Kuhn poker ESCHER constrained hyperparameter search."
@@ -469,11 +776,28 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--clear-value-buffer", type=_str2bool, default=None)
     parser.add_argument("--experiment-name", default=None)
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging.")
+    parser.add_argument(
+        "--disable-subprocess-isolation",
+        action="store_true",
+        help=(
+            "Run config/seed jobs in the parent process. By default each one runs "
+            "in a fresh Python worker so TensorFlow memory is released."
+        ),
+    )
+    parser.add_argument("--worker-input-json", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--worker-output-json", default=None, help=argparse.SUPPRESS)
     return parser
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    args = _build_arg_parser().parse_args(argv)
+    parser = _build_arg_parser()
+    args = parser.parse_args(argv)
+    if args.worker_input_json or args.worker_output_json:
+        if not args.worker_input_json or not args.worker_output_json:
+            parser.error("--worker-input-json and --worker-output-json must be used together")
+        return _run_worker(args.worker_input_json, args.worker_output_json)
+
+    subprocess_isolation_enabled = not args.disable_subprocess_isolation
     base_config = build_base_config(args)
     screening_seeds = parse_seeds(args.screening_seeds, SCREENING_SEEDS)
     confirmation_seeds = parse_seeds(args.confirmation_seeds, CONFIRMATION_SEEDS)
@@ -485,17 +809,39 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     run_dir = create_run_dir(args.output_root, base_config["experiment_name"])
     _configure_logging(run_dir, args.verbose)
+    _write_metadata(
+        run_dir,
+        base_config=base_config,
+        screening_configs=screening_configs,
+        confirmation_configs=[],
+        selected_variant_ids=[],
+        screening_seeds=screening_seeds,
+        confirmation_seeds=confirmation_seeds,
+        screening_iterations=args.screening_iterations,
+        screening_evaluation_interval=args.screening_evaluation_interval,
+        confirmation_iterations=args.confirmation_iterations,
+        confirmation_evaluation_interval=args.confirmation_evaluation_interval,
+        confirmation_top_k=args.confirmation_top_k,
+        random_search_seed=args.random_search_seed,
+        subprocess_isolation_enabled=subprocess_isolation_enabled,
+        status="running",
+    )
     _LOGGER.info("Export directory: %s", run_dir.resolve())
     _LOGGER.info("Screening variants: %s", [config["variant_id"] for config in screening_configs])
     _LOGGER.info("Screening seeds: %s", screening_seeds)
     _LOGGER.info("Confirmation seeds: %s", confirmation_seeds)
+    _LOGGER.info("Subprocess isolation enabled: %s", subprocess_isolation_enabled)
 
+    failures: List[Dict[str, Any]] = []
     screening_results = _run_stage(
         screening_configs,
         screening_seeds,
         "screening",
         args.screening_iterations,
         args.screening_evaluation_interval,
+        run_dir,
+        failures,
+        subprocess_isolation_enabled=subprocess_isolation_enabled,
     )
     screening_summary_rows = [result["summary"] for result in screening_results]
     screening_aggregate_rows = aggregate_summaries(screening_summary_rows)
@@ -521,6 +867,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             "confirmation",
             args.confirmation_iterations,
             args.confirmation_evaluation_interval,
+            run_dir,
+            failures,
+            subprocess_isolation_enabled=subprocess_isolation_enabled,
         )
         confirmation_summary_rows = [result["summary"] for result in confirmation_results]
         confirmation_aggregate_rows = aggregate_summaries(confirmation_summary_rows)
@@ -570,27 +919,23 @@ def main(argv: Optional[List[str]] = None) -> int:
             "paired_confirmation_vs_baseline": paired_aggregate_rows,
         }), f, indent=2)
 
-    metadata = {
-        "experiment_name": base_config["experiment_name"],
-        "baseline_variant_id": BASELINE_VARIANT_ID,
-        "baseline_config": base_config,
-        "screening_iterations": args.screening_iterations,
-        "screening_evaluation_interval": args.screening_evaluation_interval,
-        "screening_seeds": screening_seeds,
-        "confirmation_iterations": args.confirmation_iterations,
-        "confirmation_evaluation_interval": args.confirmation_evaluation_interval,
-        "confirmation_seeds": confirmation_seeds,
-        "confirmation_top_k": args.confirmation_top_k,
-        "selected_variant_ids": selected_variant_ids,
-        "screening_configs": screening_configs,
-        "confirmation_configs": confirmation_configs,
-        "random_search_seed": args.random_search_seed,
-        "kuhn_game_value_player_0": KUHN_GAME_VALUE_PLAYER_0,
-        "tensorflow_version": tf.__version__,
-        "pyspiel_version": getattr(pyspiel, "__version__", "unknown"),
-    }
-    with open(run_dir / "experiment_metadata.json", "w", encoding="utf-8") as f:
-        json.dump(json_safe(metadata), f, indent=2)
+    _write_metadata(
+        run_dir,
+        base_config=base_config,
+        screening_configs=screening_configs,
+        confirmation_configs=confirmation_configs,
+        selected_variant_ids=selected_variant_ids,
+        screening_seeds=screening_seeds,
+        confirmation_seeds=confirmation_seeds,
+        screening_iterations=args.screening_iterations,
+        screening_evaluation_interval=args.screening_evaluation_interval,
+        confirmation_iterations=args.confirmation_iterations,
+        confirmation_evaluation_interval=args.confirmation_evaluation_interval,
+        confirmation_top_k=args.confirmation_top_k,
+        random_search_seed=args.random_search_seed,
+        subprocess_isolation_enabled=subprocess_isolation_enabled,
+        status="completed",
+    )
 
     _plot_outputs(
         screening_results,

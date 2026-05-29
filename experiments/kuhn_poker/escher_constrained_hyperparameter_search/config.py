@@ -25,13 +25,13 @@ DEFAULT_CONFIG.update({
     "all_actions": True,
 })
 
-SCREENING_ITERATIONS = int(BASELINE_DEFAULT_CONFIG["num_iterations"])
-SCREENING_EVALUATION_INTERVAL = int(BASELINE_DEFAULT_CONFIG["check_exploitability_every"])
+SCREENING_ITERATIONS = 40
+SCREENING_EVALUATION_INTERVAL = 20
 SCREENING_SEEDS = [1234, 2025]
-N_RANDOM_CANDIDATES = 4
+N_RANDOM_CANDIDATES = 2
 
 CONFIRMATION_ITERATIONS = int(BASELINE_DEFAULT_CONFIG["num_iterations"])
-CONFIRMATION_EVALUATION_INTERVAL = int(BASELINE_DEFAULT_CONFIG["check_exploitability_every"])
+CONFIRMATION_EVALUATION_INTERVAL = 20
 CONFIRMATION_SEEDS = [1234, 2025, 31415]
 CONFIRMATION_TOP_K = 2
 
@@ -42,17 +42,20 @@ RANDOM_SEARCH_SEED = 1729
 
 SEARCH_SPACE = {
     "learning_rate": [3e-4, 5e-4, 1e-3, 2e-3],
-    "num_traversals": [75, 150, 300],
-    "num_val_fn_traversals": [75, 150, 300],
-    "regret_network_train_steps": [25, 50, 100],
-    "value_network_train_steps": [25, 50, 100],
-    "policy_network_train_steps": [100, 200, 400],
-    "policy_network_layers": [(32, 32), (64, 64), (128, 64)],
-    "regret_network_layers": [(32, 32), (64, 64), (128, 64)],
-    "value_network_layers": [(32, 32), (64, 64), (128, 64)],
-    "batch_size_regret": [64, 128, 256],
-    "batch_size_value": [64, 128, 256],
-    "memory_capacity": [int(2.5e4), int(5e4), int(1e5)],
+    # Random candidates are capped so they cannot combine every expensive
+    # setting at once. The targeted candidates below still test isolated
+    # heavier interventions such as extra traversals, fitting, and wider nets.
+    "num_traversals": [75, 150],
+    "num_val_fn_traversals": [75, 150],
+    "regret_network_train_steps": [25, 50],
+    "value_network_train_steps": [25, 50],
+    "policy_network_train_steps": [100, 200],
+    "policy_network_layers": [(32, 32), (64, 64)],
+    "regret_network_layers": [(32, 32), (64, 64)],
+    "value_network_layers": [(32, 32), (64, 64)],
+    "batch_size_regret": [64, 128],
+    "batch_size_value": [64, 128],
+    "memory_capacity": [int(2.5e4), int(5e4)],
     "reinitialize_regret_networks": [True, False],
     "reinitialize_value_network": [True, False],
     "expl": [0.5, 1.0],
