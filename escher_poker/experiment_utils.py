@@ -92,6 +92,7 @@ def make_escher_solver(
         bootstrap_value_with_separate_traversal=bool(
             config.get("bootstrap_value_with_separate_traversal", False)
         ),
+        zero_regret_fallback=str(config.get("zero_regret_fallback", "argmax")),
     )
 
 

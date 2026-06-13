@@ -82,6 +82,7 @@ class ESCHERSolver(policy.Policy):
                  on_policy_joint_regret_updates: bool = False,
                  value_test_traversals: int = 20,
                  bootstrap_value_with_separate_traversal: bool = False,
+                 zero_regret_fallback: str = "argmax",
                  *args, **kwargs):
         """Initialize the ESCHER algorithm.
 
@@ -206,6 +207,11 @@ class ESCHERSolver(policy.Policy):
         self._bootstrap_value_with_separate_traversal = bool(
             bootstrap_value_with_separate_traversal
         )
+        if zero_regret_fallback not in {"argmax", "uniform"}:
+            raise ValueError(
+                "zero_regret_fallback must be either 'argmax' or 'uniform'."
+            )
+        self._use_uniform_zero_regret_fallback = zero_regret_fallback == "uniform"
         self._avg_policy_obs_count = 0
 
         # Initialize file save locations
@@ -1414,6 +1420,8 @@ class ESCHERSolver(policy.Policy):
         summed_regret = tf.reduce_sum(regrets)
         if summed_regret > 0:
             matched_regrets = regrets / summed_regret
+        elif self._use_uniform_zero_regret_fallback:
+            matched_regrets = legal_actions_mask / tf.reduce_sum(legal_actions_mask)
         else:
             matched_regrets = tf.one_hot(
                 tf.argmax(tf.where(legal_actions_mask == 1, regrets, -10e20)),

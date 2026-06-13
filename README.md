@@ -174,6 +174,18 @@ Runs a bounded two-stage random search over configurable ESCHER solver parameter
 
 **Question:** is ESCHER's Kuhn poker non-convergence partly caused by a poor balance between traversal budget, value fitting, regret fitting, policy extraction, exploration, and network capacity?
 
+### 12. ESCHER diagnostic hypothesis sweep
+
+[`experiments/kuhn_poker/escher_diagnostic_hypothesis_sweep/`](experiments/kuhn_poker/escher_diagnostic_hypothesis_sweep/README.md)
+
+Runs a quick single-seed diagnostic sweep over the leading ESCHER exploitability
+hypotheses: disabling importance sampling, using uniform zero-regret fallback,
+skipping intermediate average-policy extraction, and increasing to a larger
+author-style Kuhn budget. This experiment is meant for fast insight rather than
+thesis-grade multi-seed confirmation.
+
+**Question:** which suspected implementation or parameterisation issue most directly explains ESCHER's poor exploitability convergence?
+
 ## Setup
 
 Create and activate a Python 3.9 virtual environment. The repository contains
@@ -226,6 +238,9 @@ python -m experiments.kuhn_poker.escher_on_policy_joint_regret_ablation.run
 
 # Experiment 11 — solver-parameter random search
 python -m experiments.kuhn_poker.escher_solver_parameter_random_search.run
+
+# Experiment 12 — quick diagnostic hypothesis sweep
+python -m experiments.kuhn_poker.escher_diagnostic_hypothesis_sweep.run
 ```
 
 For a quick smoke test:
