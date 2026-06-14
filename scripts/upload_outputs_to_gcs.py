@@ -35,14 +35,17 @@ def destination_blob_name(source_dir: Path, file_path: Path, prefix: str) -> str
 
 
 def upload_directory(source_dir: Path, destination: str) -> int:
+    import google.auth
     from google.cloud import storage
+    from google.auth.transport.requests import Request
 
     source_dir = source_dir.resolve()
     if not source_dir.is_dir():
         raise FileNotFoundError(f"Source directory does not exist: {source_dir}")
 
     bucket_name, prefix = parse_gcs_uri(destination)
-    client = storage.Client()
+    credentials, project_id = google.auth.default(request=Request())
+    client = storage.Client(project=project_id, credentials=credentials)
     bucket = client.bucket(bucket_name)
 
     count = 0

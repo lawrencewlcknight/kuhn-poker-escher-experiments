@@ -227,9 +227,9 @@ source /tmp/kuhn-escher-venv/bin/activate
 python --version
 
 python -m pip install --upgrade pip setuptools wheel
-python -m pip install --no-cache-dir "google-cloud-storage>=2.16,<4.0"
 python -m pip install --no-cache-dir --no-build-isolation -r requirements.txt
 python -m pip install --no-cache-dir --no-build-isolation -e .
+python -m pip install --no-cache-dir "google-cloud-storage>=2.16,<4.0"
 python -m pip check || true
 
 mkdir -p "$JOB_OUTPUT_DIR"

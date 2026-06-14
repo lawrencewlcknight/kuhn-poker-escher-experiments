@@ -654,6 +654,8 @@ export PATH="$HOME/.local/bin:$PATH"
 uv python install 3.9
 uv venv --python 3.9 --seed /tmp/kuhn-escher-venv
 source /tmp/kuhn-escher-venv/bin/activate
+python -m pip install --no-cache-dir --no-build-isolation -r requirements.txt
+python -m pip install --no-cache-dir --no-build-isolation -e .
 python -m pip install --no-cache-dir "google-cloud-storage>=2.16,<4.0"
 ```
 
