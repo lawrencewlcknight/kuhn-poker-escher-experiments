@@ -564,6 +564,8 @@ Available ESCHER experiment modules:
 | 9. Disk-backed regret-memory ablation | `escher_disk_backed_regret_memory_ablation` |
 | 10. On-policy joint-regret ablation | `escher_on_policy_joint_regret_ablation` |
 | 11. Solver-parameter random search | `escher_solver_parameter_random_search` |
+| 12. Diagnostic hypothesis sweep | `escher_diagnostic_hypothesis_sweep` |
+| 13. Author-budget multi-seed validation | `escher_author_budget_multiseed` |
 
 Example:
 
