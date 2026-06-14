@@ -124,6 +124,10 @@ STATUS_JSON
   local upload_code=0
   if [[ -d "$REPO_DIR/outputs" ]]; then
     echo "Uploading outputs to Cloud Storage: $BUCKET_DEST"
+    if [[ -n "${CLOUDSDK_PYTHON:-}" ]]; then
+      echo "Using Cloud SDK Python: $CLOUDSDK_PYTHON"
+      "$CLOUDSDK_PYTHON" --version || true
+    fi
     gsutil -m cp -r "$REPO_DIR/outputs" "$BUCKET_DEST"
     upload_code="$?"
     echo "Upload exit code: $upload_code"
@@ -211,9 +215,17 @@ free -h || true
 df -h || true
 lscpu | head -30 || true
 
-# Use Python 3.9 to match the repository metadata and TensorFlow requirements.
+# Use Python 3.10 for Google Cloud SDK tools. Current Cloud SDK dependencies
+# use Python syntax that is not compatible with Python 3.9, while the ESCHER
+# experiment environment still needs Python 3.9 for TensorFlow compatibility.
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
+uv python install 3.10
+export CLOUDSDK_PYTHON="$(uv python find 3.10)"
+echo "Configured Cloud SDK Python:"
+"$CLOUDSDK_PYTHON" --version
+
+# Use Python 3.9 to match the repository metadata and TensorFlow requirements.
 uv python install 3.9
 uv venv --python 3.9 --seed /tmp/kuhn-escher-venv
 source /tmp/kuhn-escher-venv/bin/activate

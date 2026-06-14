@@ -651,14 +651,21 @@ The script uses:
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
+uv python install 3.10
+export CLOUDSDK_PYTHON="$(uv python find 3.10)"
 uv python install 3.9
 uv venv --python 3.9 --seed /tmp/kuhn-escher-venv
 source /tmp/kuhn-escher-venv/bin/activate
 ```
 
-and deactivates the environment after the experiment command. Output copying is
-handled by the cleanup trap so it runs after both successful and failed
-experiment commands:
+`CLOUDSDK_PYTHON` is intentionally pointed at Python 3.10 because current Google
+Cloud SDK dependencies use syntax that is not compatible with Python 3.9. The
+ESCHER experiment itself still runs in the Python 3.9 virtual environment for
+TensorFlow compatibility.
+
+The script deactivates the experiment environment after the experiment command.
+Output copying is handled by the cleanup trap so it runs after both successful
+and failed experiment commands:
 
 ```bash
 deactivate || true
