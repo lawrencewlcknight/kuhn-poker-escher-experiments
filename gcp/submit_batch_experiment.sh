@@ -78,6 +78,7 @@ RESOURCE_LOG="$JOB_OUTPUT_DIR/resource_snapshots.log"
 BOOT_LOG="/tmp/{job_name}_batch_boot.log"
 BUCKET_DEST="{bucket}/{job_name}/"
 RESOURCE_MONITOR_PID=""
+UPLOAD_PYTHON="/tmp/kuhn-escher-venv/bin/python"
 
 exec > >(tee -a "$BOOT_LOG") 2>&1
 
@@ -124,12 +125,13 @@ STATUS_JSON
   local upload_code=0
   if [[ -d "$REPO_DIR/outputs" ]]; then
     echo "Uploading outputs to Cloud Storage: $BUCKET_DEST"
-    if [[ -n "${CLOUDSDK_PYTHON:-}" ]]; then
-      echo "Using Cloud SDK Python: $CLOUDSDK_PYTHON"
-      "$CLOUDSDK_PYTHON" --version || true
+    if [[ -x "$UPLOAD_PYTHON" && -f "$REPO_DIR/scripts/upload_outputs_to_gcs.py" ]]; then
+      "$UPLOAD_PYTHON" "$REPO_DIR/scripts/upload_outputs_to_gcs.py" "$REPO_DIR/outputs" "$BUCKET_DEST"
+      upload_code="$?"
+    else
+      echo "Upload helper is unavailable; cannot upload outputs."
+      upload_code=1
     fi
-    gsutil -m cp -r "$REPO_DIR/outputs" "$BUCKET_DEST"
-    upload_code="$?"
     echo "Upload exit code: $upload_code"
   else
     echo "No outputs directory found at cleanup; nothing to upload."
@@ -215,15 +217,8 @@ free -h || true
 df -h || true
 lscpu | head -30 || true
 
-# Use Python 3.10 for Google Cloud SDK tools. Current Cloud SDK dependencies
-# use Python syntax that is not compatible with Python 3.9, while the ESCHER
-# experiment environment still needs Python 3.9 for TensorFlow compatibility.
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
-uv python install 3.10
-export CLOUDSDK_PYTHON="$(uv python find 3.10)"
-echo "Configured Cloud SDK Python:"
-"$CLOUDSDK_PYTHON" --version
 
 # Use Python 3.9 to match the repository metadata and TensorFlow requirements.
 uv python install 3.9
@@ -232,6 +227,7 @@ source /tmp/kuhn-escher-venv/bin/activate
 python --version
 
 python -m pip install --upgrade pip setuptools wheel
+python -m pip install --no-cache-dir "google-cloud-storage>=2.16,<4.0"
 python -m pip install --no-cache-dir --no-build-isolation -r requirements.txt
 python -m pip install --no-cache-dir --no-build-isolation -e .
 python -m pip check || true

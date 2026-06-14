@@ -237,10 +237,10 @@ Before running a full experiment, submit a very small ESCHER baseline smoke test
 ```
 
 The script prints the Batch script before submission. Check that the upload line
-uses `gsutil`, for example:
+uses the repository upload helper, for example:
 
 ```bash
-gsutil -m cp -r outputs "gs://your-project-id-kuhn-poker-escher-results/escher-smoke-exp1-.../"
+python scripts/upload_outputs_to_gcs.py outputs "gs://your-project-id-kuhn-poker-escher-results/escher-smoke-exp1-.../"
 ```
 
 After submission, this command can be used to check whether the experiment job is
@@ -651,17 +651,16 @@ The script uses:
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
-uv python install 3.10
-export CLOUDSDK_PYTHON="$(uv python find 3.10)"
 uv python install 3.9
 uv venv --python 3.9 --seed /tmp/kuhn-escher-venv
 source /tmp/kuhn-escher-venv/bin/activate
+python -m pip install --no-cache-dir "google-cloud-storage>=2.16,<4.0"
 ```
 
-`CLOUDSDK_PYTHON` is intentionally pointed at Python 3.10 because current Google
-Cloud SDK dependencies use syntax that is not compatible with Python 3.9. The
-ESCHER experiment itself still runs in the Python 3.9 virtual environment for
-TensorFlow compatibility.
+The ESCHER experiment and upload helper both run from the Python 3.9 virtual
+environment. The upload helper uses the `google-cloud-storage` client library,
+which avoids depending on the Batch image's Cloud SDK or `gsutil` Python
+runtime.
 
 The script deactivates the experiment environment after the experiment command.
 Output copying is handled by the cleanup trap so it runs after both successful
@@ -672,5 +671,5 @@ deactivate || true
 # cleanup trap uploads outputs to Cloud Storage
 ```
 
-The script uses `gsutil` rather than `gcloud storage cp` because `gsutil` has
-proved reliable on the default Batch image for this workflow.
+The script does not use `gsutil`; this avoids the Cloud SDK Python-runtime issue
+seen on some Batch images.
