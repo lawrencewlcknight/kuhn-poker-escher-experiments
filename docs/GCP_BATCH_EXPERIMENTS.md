@@ -651,6 +651,8 @@ The script uses:
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
+uv python install 3.10
+export CLOUDSDK_PYTHON="$(uv python find 3.10)"
 uv python install 3.9
 uv venv --python 3.9 --seed /tmp/kuhn-escher-venv
 source /tmp/kuhn-escher-venv/bin/activate
@@ -658,9 +660,11 @@ python -m pip install --no-cache-dir --no-build-isolation -r requirements.txt
 python -m pip install --no-cache-dir --no-build-isolation -e .
 ```
 
-The ESCHER experiment runs from the Python 3.9 virtual environment. Uploading is
-handled after the experiment by `gcloud storage cp --recursive`, not by `gsutil`
-or by Google Python client libraries installed into the experiment environment.
+The ESCHER experiment runs from the Python 3.9 virtual environment. Cloud SDK is
+pointed at a separate Python 3.10 runtime with `CLOUDSDK_PYTHON`, because current
+`gcloud storage` no longer supports Python 3.9. Uploading is handled after the
+experiment by `gcloud storage cp --recursive`, not by `gsutil` or by Google
+Python client libraries installed into the experiment environment.
 
 The script deactivates the experiment environment after the experiment command.
 Output copying is handled by the cleanup trap so it runs after both successful

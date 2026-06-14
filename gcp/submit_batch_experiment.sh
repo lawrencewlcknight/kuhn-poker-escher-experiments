@@ -219,6 +219,13 @@ lscpu | head -30 || true
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 
+# Keep Google Cloud CLI on a runtime it supports. This is separate from the
+# ESCHER experiment environment below, which remains Python 3.9.
+uv python install 3.10
+export CLOUDSDK_PYTHON="$(uv python find 3.10)"
+echo "Configured Cloud SDK Python:"
+"$CLOUDSDK_PYTHON" --version
+
 # Use Python 3.9 to match the repository metadata and TensorFlow requirements.
 uv python install 3.9
 uv venv --python 3.9 --seed /tmp/kuhn-escher-venv
