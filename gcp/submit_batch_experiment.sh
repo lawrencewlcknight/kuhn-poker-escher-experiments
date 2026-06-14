@@ -78,7 +78,6 @@ RESOURCE_LOG="$JOB_OUTPUT_DIR/resource_snapshots.log"
 BOOT_LOG="/tmp/{job_name}_batch_boot.log"
 BUCKET_DEST="{bucket}/{job_name}/"
 RESOURCE_MONITOR_PID=""
-UPLOAD_PYTHON="/tmp/kuhn-escher-venv/bin/python"
 
 exec > >(tee -a "$BOOT_LOG") 2>&1
 
@@ -125,11 +124,11 @@ STATUS_JSON
   local upload_code=0
   if [[ -d "$REPO_DIR/outputs" ]]; then
     echo "Uploading outputs to Cloud Storage: $BUCKET_DEST"
-    if [[ -x "$UPLOAD_PYTHON" && -f "$REPO_DIR/scripts/upload_outputs_to_gcs.py" ]]; then
-      "$UPLOAD_PYTHON" "$REPO_DIR/scripts/upload_outputs_to_gcs.py" "$REPO_DIR/outputs" "$BUCKET_DEST"
+    if command -v gcloud >/dev/null 2>&1; then
+      gcloud storage cp --recursive "$REPO_DIR/outputs" "$BUCKET_DEST"
       upload_code="$?"
     else
-      echo "Upload helper is unavailable; cannot upload outputs."
+      echo "gcloud command is unavailable; cannot upload outputs."
       upload_code=1
     fi
     echo "Upload exit code: $upload_code"
@@ -229,7 +228,6 @@ python --version
 python -m pip install --upgrade pip setuptools wheel
 python -m pip install --no-cache-dir --no-build-isolation -r requirements.txt
 python -m pip install --no-cache-dir --no-build-isolation -e .
-python -m pip install --no-cache-dir "google-cloud-storage>=2.16,<4.0"
 python -m pip check || true
 
 mkdir -p "$JOB_OUTPUT_DIR"

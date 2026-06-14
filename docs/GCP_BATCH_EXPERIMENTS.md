@@ -237,10 +237,10 @@ Before running a full experiment, submit a very small ESCHER baseline smoke test
 ```
 
 The script prints the Batch script before submission. Check that the upload line
-uses the repository upload helper, for example:
+uses `gcloud storage cp`, for example:
 
 ```bash
-python scripts/upload_outputs_to_gcs.py outputs "gs://your-project-id-kuhn-poker-escher-results/escher-smoke-exp1-.../"
+gcloud storage cp --recursive outputs "gs://your-project-id-kuhn-poker-escher-results/escher-smoke-exp1-.../"
 ```
 
 After submission, this command can be used to check whether the experiment job is
@@ -656,13 +656,11 @@ uv venv --python 3.9 --seed /tmp/kuhn-escher-venv
 source /tmp/kuhn-escher-venv/bin/activate
 python -m pip install --no-cache-dir --no-build-isolation -r requirements.txt
 python -m pip install --no-cache-dir --no-build-isolation -e .
-python -m pip install --no-cache-dir "google-cloud-storage>=2.16,<4.0"
 ```
 
-The ESCHER experiment and upload helper both run from the Python 3.9 virtual
-environment. The upload helper uses the `google-cloud-storage` client library,
-which avoids depending on the Batch image's Cloud SDK or `gsutil` Python
-runtime.
+The ESCHER experiment runs from the Python 3.9 virtual environment. Uploading is
+handled after the experiment by `gcloud storage cp --recursive`, not by `gsutil`
+or by Google Python client libraries installed into the experiment environment.
 
 The script deactivates the experiment environment after the experiment command.
 Output copying is handled by the cleanup trap so it runs after both successful
@@ -673,5 +671,6 @@ deactivate || true
 # cleanup trap uploads outputs to Cloud Storage
 ```
 
-The script does not use `gsutil`; this avoids the Cloud SDK Python-runtime issue
-seen on some Batch images.
+The script does not use `gsutil`; this avoids the `gsutil` Python-runtime issue
+seen on some Batch images while also avoiding upload-time dependencies on the
+experiment virtual environment.
