@@ -73,7 +73,11 @@ The repository is organised so that each experiment can be run independently whi
 │       │   ├── config.py
 │       │   ├── run.py
 │       │   └── README.md
-│       └── escher_author_budget_multiseed/           # Experiment 13
+│       ├── escher_author_budget_multiseed/           # Experiment 13
+│       │   ├── config.py
+│       │   ├── run.py
+│       │   └── README.md
+│       └── escher_network_size_sweep/                # Experiment 14
 │           ├── config.py
 │           ├── run.py
 │           └── README.md
@@ -206,6 +210,17 @@ sampling in regret targets, and uses a uniform legal-action zero-regret fallback
 lower exploitability when run for the full baseline iteration budget over a
 small multi-seed validation set?
 
+### 14. ESCHER network-size sweep
+
+[`experiments/kuhn_poker/escher_network_size_sweep/`](experiments/kuhn_poker/escher_network_size_sweep/README.md)
+
+Runs a single-seed sweep over policy, regret, and history-value network
+architectures while keeping the Experiment 13 training protocol fixed. The sweep
+tests small, lightweight, reference, wider, and deeper multilayer perceptrons.
+
+**Question:** how sensitive is the revised ESCHER configuration to hidden-layer
+width and depth?
+
 ## Setup
 
 Create and activate a Python 3.9 virtual environment. The repository contains
@@ -264,6 +279,9 @@ python -m experiments.kuhn_poker.escher_diagnostic_hypothesis_sweep.run
 
 # Experiment 13 — author-budget multi-seed validation
 python -m experiments.kuhn_poker.escher_author_budget_multiseed.run
+
+# Experiment 14 — network-size sweep
+python -m experiments.kuhn_poker.escher_network_size_sweep.run
 ```
 
 For a quick smoke test:

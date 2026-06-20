@@ -566,6 +566,7 @@ Available ESCHER experiment modules:
 | 11. Solver-parameter random search | `escher_solver_parameter_random_search` |
 | 12. Diagnostic hypothesis sweep | `escher_diagnostic_hypothesis_sweep` |
 | 13. Author-budget multi-seed validation | `escher_author_budget_multiseed` |
+| 14. Network-size sweep | `escher_network_size_sweep` |
 
 Example:
 
