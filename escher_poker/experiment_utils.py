@@ -93,6 +93,37 @@ def make_escher_solver(
             config.get("bootstrap_value_with_separate_traversal", False)
         ),
         zero_regret_fallback=str(config.get("zero_regret_fallback", "argmax")),
+        policy_network_activation=str(
+            config.get("policy_network_activation", "leakyrelu")
+        ),
+        regret_network_activation=str(
+            config.get("regret_network_activation", "leakyrelu")
+        ),
+        value_network_activation=str(
+            config.get("value_network_activation", "leakyrelu")
+        ),
+        policy_network_layer_norm=bool(
+            config.get("policy_network_layer_norm", True)
+        ),
+        regret_network_layer_norm=bool(
+            config.get("regret_network_layer_norm", True)
+        ),
+        value_network_layer_norm=bool(
+            config.get("value_network_layer_norm", True)
+        ),
+        policy_network_residual_mode=str(
+            config.get("policy_network_residual_mode", "same_width")
+        ),
+        regret_network_residual_mode=str(
+            config.get("regret_network_residual_mode", "same_width")
+        ),
+        value_network_residual_mode=str(
+            config.get("value_network_residual_mode", "same_width")
+        ),
+        policy_network_head_depth=int(config.get("policy_network_head_depth", 0)),
+        regret_network_head_depth=int(config.get("regret_network_head_depth", 0)),
+        policy_network_head_units=config.get("policy_network_head_units"),
+        regret_network_head_units=config.get("regret_network_head_units"),
     )
 
 

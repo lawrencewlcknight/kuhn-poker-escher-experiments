@@ -83,6 +83,19 @@ class ESCHERSolver(policy.Policy):
                  value_test_traversals: int = 20,
                  bootstrap_value_with_separate_traversal: bool = False,
                  zero_regret_fallback: str = "argmax",
+                 policy_network_activation: str = "leakyrelu",
+                 regret_network_activation: str = "leakyrelu",
+                 value_network_activation: str = "leakyrelu",
+                 policy_network_layer_norm: bool = True,
+                 regret_network_layer_norm: bool = True,
+                 value_network_layer_norm: bool = True,
+                 policy_network_residual_mode: str = "same_width",
+                 regret_network_residual_mode: str = "same_width",
+                 value_network_residual_mode: str = "same_width",
+                 policy_network_head_depth: int = 0,
+                 regret_network_head_depth: int = 0,
+                 policy_network_head_units: int = None,
+                 regret_network_head_units: int = None,
                  *args, **kwargs):
         """Initialize the ESCHER algorithm.
 
@@ -139,6 +152,19 @@ class ESCHERSolver(policy.Policy):
         self._policy_network_layers = policy_network_layers
         self._regret_network_layers = regret_network_layers
         self._value_network_layers = value_network_layers
+        self._policy_network_activation = policy_network_activation
+        self._regret_network_activation = regret_network_activation
+        self._value_network_activation = value_network_activation
+        self._policy_network_layer_norm = bool(policy_network_layer_norm)
+        self._regret_network_layer_norm = bool(regret_network_layer_norm)
+        self._value_network_layer_norm = bool(value_network_layer_norm)
+        self._policy_network_residual_mode = str(policy_network_residual_mode)
+        self._regret_network_residual_mode = str(regret_network_residual_mode)
+        self._value_network_residual_mode = str(value_network_residual_mode)
+        self._policy_network_head_depth = int(policy_network_head_depth)
+        self._regret_network_head_depth = int(regret_network_head_depth)
+        self._policy_network_head_units = policy_network_head_units
+        self._regret_network_head_units = regret_network_head_units
         self._num_players = game.num_players()
         self._root_node = self._game.new_initial_state()
         self._embedding_size = len(self._root_node.information_state_tensor(0))
@@ -263,13 +289,23 @@ class ESCHERSolver(policy.Policy):
             with tf.device(self._infer_device):
                 regret_network = RegretNetwork(
                     self._embedding_size, self._regret_network_layers,
-                    self._num_actions)
+                    self._num_actions,
+                    activation=self._regret_network_activation,
+                    use_layer_norm=self._regret_network_layer_norm,
+                    residual_mode=self._regret_network_residual_mode,
+                    head_depth=self._regret_network_head_depth,
+                    head_units=self._regret_network_head_units)
                 self._build_network_once(regret_network, self._embedding_size)
                 self._regret_networks.append(regret_network)
             with tf.device(self._train_device):
                 regret_network_train = RegretNetwork(
                     self._embedding_size,
-                    self._regret_network_layers, self._num_actions)
+                    self._regret_network_layers, self._num_actions,
+                    activation=self._regret_network_activation,
+                    use_layer_norm=self._regret_network_layer_norm,
+                    residual_mode=self._regret_network_residual_mode,
+                    head_depth=self._regret_network_head_depth,
+                    head_units=self._regret_network_head_units)
                 self._build_network_once(regret_network_train, self._embedding_size)
                 self._regret_networks_train.append(regret_network_train)
                 self._loss_regrets.append(tf.keras.losses.MeanSquaredError())
@@ -280,8 +316,20 @@ class ESCHERSolver(policy.Policy):
         self._create_memories(memory_capacity)
 
         # Initialize value networks, losses, optimizers
-        self._val_network = ValueNetwork(self._value_embedding_size, self._value_network_layers)
-        self._val_network_train = ValueNetwork(self._value_embedding_size, self._value_network_layers)
+        self._val_network = ValueNetwork(
+            self._value_embedding_size,
+            self._value_network_layers,
+            activation=self._value_network_activation,
+            use_layer_norm=self._value_network_layer_norm,
+            residual_mode=self._value_network_residual_mode,
+        )
+        self._val_network_train = ValueNetwork(
+            self._value_embedding_size,
+            self._value_network_layers,
+            activation=self._value_network_activation,
+            use_layer_norm=self._value_network_layer_norm,
+            residual_mode=self._value_network_residual_mode,
+        )
         self._build_network_once(self._val_network, self._value_embedding_size)
         self._build_network_once(self._val_network_train, self._value_embedding_size)
         self._loss_value = tf.keras.losses.MeanSquaredError()
@@ -295,7 +343,12 @@ class ESCHERSolver(policy.Policy):
         with tf.device(self._train_device):
             self._policy_network = PolicyNetwork(self._embedding_size,
                                                  self._policy_network_layers,
-                                                 self._num_actions)
+                                                 self._num_actions,
+                                                 activation=self._policy_network_activation,
+                                                 use_layer_norm=self._policy_network_layer_norm,
+                                                 residual_mode=self._policy_network_residual_mode,
+                                                 head_depth=self._policy_network_head_depth,
+                                                 head_units=self._policy_network_head_units)
             self._build_network_once(self._policy_network, self._embedding_size)
             self._optimizer_policy = tf.keras.optimizers.Adam(
                 learning_rate=self._learning_rate)
@@ -306,7 +359,12 @@ class ESCHERSolver(policy.Policy):
         with tf.device(self._train_device):
             self._regret_networks_train[player] = RegretNetwork(
                 self._embedding_size, self._regret_network_layers,
-                self._num_actions)
+                self._num_actions,
+                activation=self._regret_network_activation,
+                use_layer_norm=self._regret_network_layer_norm,
+                residual_mode=self._regret_network_residual_mode,
+                head_depth=self._regret_network_head_depth,
+                head_units=self._regret_network_head_units)
             self._build_network_once(
                 self._regret_networks_train[player],
                 self._embedding_size,
@@ -329,7 +387,12 @@ class ESCHERSolver(policy.Policy):
         """Reinitalize player's value network and optimizer for training."""
         with tf.device(self._train_device):
             self._val_network_train = ValueNetwork(
-                self._value_embedding_size, self._value_network_layers)
+                self._value_embedding_size,
+                self._value_network_layers,
+                activation=self._value_network_activation,
+                use_layer_norm=self._value_network_layer_norm,
+                residual_mode=self._value_network_residual_mode,
+            )
             self._build_network_once(
                 self._val_network_train,
                 self._value_embedding_size,

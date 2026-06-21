@@ -77,10 +77,15 @@ The repository is organised so that each experiment can be run independently whi
 │       │   ├── config.py
 │       │   ├── run.py
 │       │   └── README.md
-│       └── escher_network_size_sweep/                # Experiment 14
-│           ├── config.py
-│           ├── run.py
-│           └── README.md
+│       ├── escher_network_size_sweep/                # Experiment 14
+│       ├── escher_separate_network_architecture_sweep/ # Experiment 15
+│       ├── escher_regret_network_width_sweep/        # Experiment 16
+│       ├── escher_policy_network_width_sweep/        # Experiment 17
+│       ├── escher_layer_norm_ablation/               # Experiment 18
+│       ├── escher_activation_sweep/                  # Experiment 19
+│       ├── escher_residual_mlp_sweep/                # Experiment 20
+│       ├── escher_bottleneck_architecture_sweep/     # Experiment 21
+│       └── escher_shared_trunk_head_sweep/           # Experiment 22
 ├── docs/
 │   └── OUTPUT_CONVENTIONS.md
 ├── notebooks/                                        # Original notebook archive
@@ -220,6 +225,23 @@ tests small, lightweight, reference, wider, and deeper multilayer perceptrons.
 
 **Question:** how sensitive is the revised ESCHER configuration to hidden-layer
 width and depth?
+
+### 15-22. ESCHER architecture diagnostic sweeps
+
+These single-seed diagnostic experiments extend Experiment 14 by isolating
+specific neural-network design choices under the Experiment 13 training budget:
+
+- [`escher_separate_network_architecture_sweep`](experiments/kuhn_poker/escher_separate_network_architecture_sweep/README.md) varies relative capacity across the policy, regret, and value networks.
+- [`escher_regret_network_width_sweep`](experiments/kuhn_poker/escher_regret_network_width_sweep/README.md) varies regret-network width while holding the other networks fixed.
+- [`escher_policy_network_width_sweep`](experiments/kuhn_poker/escher_policy_network_width_sweep/README.md) varies average-policy-network width while holding the other networks fixed.
+- [`escher_layer_norm_ablation`](experiments/kuhn_poker/escher_layer_norm_ablation/README.md) tests whether layer normalisation helps or hurts each network.
+- [`escher_activation_sweep`](experiments/kuhn_poker/escher_activation_sweep/README.md) compares LeakyReLU, ReLU, ELU, GELU, Swish, and Tanh.
+- [`escher_residual_mlp_sweep`](experiments/kuhn_poker/escher_residual_mlp_sweep/README.md) compares plain MLPs, same-width residual blocks, and projection residual blocks.
+- [`escher_bottleneck_architecture_sweep`](experiments/kuhn_poker/escher_bottleneck_architecture_sweep/README.md) compares bottleneck, non-bottleneck, wide, and expanding MLP shapes.
+- [`escher_shared_trunk_head_sweep`](experiments/kuhn_poker/escher_shared_trunk_head_sweep/README.md) compares the current shared trunk plus linear action-output layer with separate per-action heads.
+
+**Question:** which network-design choices most improve ESCHER's exploitability
+convergence once the stronger Experiment 13 training protocol is fixed?
 
 ## Setup
 

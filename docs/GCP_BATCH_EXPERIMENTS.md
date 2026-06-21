@@ -567,6 +567,14 @@ Available ESCHER experiment modules:
 | 12. Diagnostic hypothesis sweep | `escher_diagnostic_hypothesis_sweep` |
 | 13. Author-budget multi-seed validation | `escher_author_budget_multiseed` |
 | 14. Network-size sweep | `escher_network_size_sweep` |
+| 15. Separate network architecture sweep | `escher_separate_network_architecture_sweep` |
+| 16. Regret-network width sweep | `escher_regret_network_width_sweep` |
+| 17. Policy-network width sweep | `escher_policy_network_width_sweep` |
+| 18. Layer-normalisation ablation | `escher_layer_norm_ablation` |
+| 19. Activation-function sweep | `escher_activation_sweep` |
+| 20. Residual-MLP sweep | `escher_residual_mlp_sweep` |
+| 21. Bottleneck architecture sweep | `escher_bottleneck_architecture_sweep` |
+| 22. Shared-trunk/action-head sweep | `escher_shared_trunk_head_sweep` |
 
 Example:
 
