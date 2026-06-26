@@ -16,6 +16,7 @@ from .constants import (
     NASH_EXPLOITABILITY_TARGET_LABEL,
 )
 from .experiment_utils import safe_stats
+from .plotting import format_plot_title
 
 
 def _variant_label(variant_id: str, variants: List[Dict[str, Any]]) -> str:
@@ -90,7 +91,7 @@ def plot_mean_bar(
         ax.legend()
     ax.set_ylabel(ylabel)
     ax.set_xlabel("Variant")
-    ax.set_title(title)
+    ax.set_title(format_plot_title(title))
     ax.grid(True, axis="y", alpha=0.3)
     ax.tick_params(axis="x", rotation=20)
     fig.tight_layout()
@@ -132,7 +133,7 @@ def plot_paired_delta(
     ax.axhline(0.0, linestyle="--", linewidth=1)
     ax.set_ylabel(ylabel)
     ax.set_xlabel("Variant")
-    ax.set_title(title)
+    ax.set_title(format_plot_title(title))
     ax.grid(True, axis="y", alpha=0.3)
     ax.tick_params(axis="x", rotation=20)
     fig.tight_layout()
@@ -200,7 +201,7 @@ def plot_reference_intermediate_curves(
     )
     ax.set_xlabel("ESCHER iteration")
     ax.set_ylabel("Exploitability")
-    ax.set_title("ESCHER baseline: intermediate exploitability curve")
+    ax.set_title(format_plot_title("ESCHER baseline: intermediate exploitability curve"))
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()
@@ -224,7 +225,7 @@ def plot_reference_intermediate_curves(
     )
     ax.set_xlabel("ESCHER iteration")
     ax.set_ylabel("Average policy value")
-    ax.set_title("ESCHER baseline: intermediate average policy value")
+    ax.set_title(format_plot_title("ESCHER baseline: intermediate average policy value"))
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()
@@ -242,7 +243,7 @@ def plot_reference_intermediate_curves(
     ax.fill_between(iterations, means - errors, means + errors, alpha=0.2, label="Mean +/- s.e.")
     ax.set_xlabel("ESCHER iteration")
     ax.set_ylabel(r"Absolute error from $-1/18$")
-    ax.set_title("ESCHER baseline: intermediate policy-value error")
+    ax.set_title(format_plot_title("ESCHER baseline: intermediate policy-value error"))
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()

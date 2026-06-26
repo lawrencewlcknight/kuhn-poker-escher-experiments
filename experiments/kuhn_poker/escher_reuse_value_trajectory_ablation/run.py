@@ -49,6 +49,7 @@ from escher_poker.experiment_utils import (  # noqa: E402
     safe_stats,
     to_float,
 )
+from escher_poker.plotting import format_plot_title  # noqa: E402
 from escher_poker.seeding import set_seed_tf  # noqa: E402
 
 from .config import (  # noqa: E402
@@ -499,7 +500,7 @@ def _plot_curve(
         )
     ax.set_xlabel(x_col.replace("_", " ").title())
     ax.set_ylabel(ylabel)
-    ax.set_title(title)
+    ax.set_title(format_plot_title(title))
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()
@@ -532,7 +533,7 @@ def _plot_final_bar(summary_rows: List[Dict[str, Any]], run_dir: Path) -> None:
         label=NASH_EXPLOITABILITY_TARGET_LABEL,
     )
     ax.set_ylabel("Final exploitability (NashConv/2)")
-    ax.set_title("ESCHER value-trajectory reuse ablation: final exploitability")
+    ax.set_title(format_plot_title("ESCHER value-trajectory reuse ablation: final exploitability"))
     ax.grid(True, axis="y", alpha=0.3)
     ax.tick_params(axis="x", rotation=20)
     ax.legend()
@@ -566,7 +567,7 @@ def _plot_final_policy_value_bar(summary_rows: List[Dict[str, Any]], run_dir: Pa
         label=AVERAGE_POLICY_VALUE_TARGET_LABEL,
     )
     ax.set_ylabel("Final average policy value")
-    ax.set_title("ESCHER value-trajectory reuse ablation: final average policy value")
+    ax.set_title(format_plot_title("ESCHER value-trajectory reuse ablation: final average policy value"))
     ax.grid(True, axis="y", alpha=0.3)
     ax.tick_params(axis="x", rotation=20)
     ax.legend()
@@ -601,7 +602,7 @@ def _plot_metric_bar(
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.bar(labels, means, yerr=errors, capsize=4)
     ax.set_ylabel(ylabel)
-    ax.set_title(title)
+    ax.set_title(format_plot_title(title))
     ax.grid(True, axis="y", alpha=0.3)
     ax.tick_params(axis="x", rotation=20)
     fig.tight_layout()
@@ -621,7 +622,7 @@ def _plot_paired_delta(paired_rows: List[Dict[str, Any]], run_dir: Path) -> None
     )
     ax.set_xlabel("Seed")
     ax.set_ylabel("Reuse - baseline final exploitability")
-    ax.set_title("Paired effect of reusing value trajectories")
+    ax.set_title(format_plot_title("Paired effect of reusing value trajectories"))
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
     fig.savefig(

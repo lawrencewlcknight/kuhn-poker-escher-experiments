@@ -8,6 +8,11 @@ Each experiment should create a timestamped directory under `outputs/` and write
 - `checkpoint_curves.csv` — one row per evaluation checkpoint per seed.
 - thesis-style PNG plots using consistent figure names.
 
+Chart titles are prefixed by the repository plotting hook as
+`ESCHER - Kuhn - <specific chart title>`. New experiments should either use the
+shared plotting helpers or import `escher_poker` before creating Matplotlib
+figures so this convention is applied automatically.
+
 The ESCHER baseline currently produces:
 
 - `exploitability_by_iteration_multiseed.png`

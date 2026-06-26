@@ -9,13 +9,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import stats
 
+from .chart_titles import format_plot_title, game_variant_label
 from .constants import (
     AVERAGE_POLICY_VALUE_TARGET_LABEL,
     KUHN_AVERAGE_POLICY_VALUE_TARGET,
     NASH_EXPLOITABILITY_TARGET,
     NASH_EXPLOITABILITY_TARGET_LABEL,
 )
-
 
 def _stack_curve(results: List[Dict[str, Any]], key: str) -> np.ndarray:
     return np.vstack([np.asarray(result[key], dtype=np.float64) for result in results])
@@ -67,7 +67,7 @@ def plot_multiseed_results(
     )
     ax.set_xlabel("Training iteration")
     ax.set_ylabel("Exploitability (NashConv/2)")
-    ax.set_title("Kuhn Poker ESCHER: Exploitability Across Seeds")
+    ax.set_title(format_plot_title("Kuhn Poker ESCHER: Exploitability Across Seeds"))
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
@@ -92,7 +92,7 @@ def plot_multiseed_results(
     )
     ax.set_xlabel("Training iteration")
     ax.set_ylabel("Average policy value")
-    ax.set_title("Kuhn Poker ESCHER: Average Policy Value Across Seeds")
+    ax.set_title(format_plot_title("Kuhn Poker ESCHER: Average Policy Value Across Seeds"))
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
@@ -117,7 +117,7 @@ def plot_multiseed_results(
     )
     ax.set_xlabel("Nodes touched")
     ax.set_ylabel("Exploitability (NashConv/2)")
-    ax.set_title("Kuhn Poker ESCHER: Exploitability by Nodes Touched")
+    ax.set_title(format_plot_title("Kuhn Poker ESCHER: Exploitability by Nodes Touched"))
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
@@ -142,7 +142,7 @@ def plot_multiseed_results(
     )
     ax.set_xlabel("Nodes touched")
     ax.set_ylabel("Average policy value")
-    ax.set_title("Kuhn Poker ESCHER: Average Policy Value by Nodes Touched")
+    ax.set_title(format_plot_title("Kuhn Poker ESCHER: Average Policy Value by Nodes Touched"))
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
@@ -162,7 +162,7 @@ def plot_multiseed_results(
     )
     ax.set_xlabel("Training iteration")
     ax.set_ylabel(r"$|v(\sigma) - (-1/18)|$")
-    ax.set_title("Kuhn Poker ESCHER: Policy-Value Error")
+    ax.set_title(format_plot_title("Kuhn Poker ESCHER: Policy-Value Error"))
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
@@ -191,7 +191,7 @@ def plot_diagnostics(results: List[Dict[str, Any]], run_dir: str | Path) -> None
         )
     ax.set_xlabel("Training iteration")
     ax.set_ylabel("MSE loss")
-    ax.set_title("ESCHER Average-Policy Network Loss Diagnostic")
+    ax.set_title(format_plot_title("ESCHER Average-Policy Network Loss Diagnostic"))
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
@@ -203,7 +203,7 @@ def plot_diagnostics(results: List[Dict[str, Any]], run_dir: str | Path) -> None
     ax.plot(iterations, np.nanmean(regret_loss_p1_mat, axis=0), linewidth=2, label="Regret loss P1")
     ax.set_xlabel("Training iteration")
     ax.set_ylabel("MSE loss")
-    ax.set_title("ESCHER Regret-Network Loss Diagnostic")
+    ax.set_title(format_plot_title("ESCHER Regret-Network Loss Diagnostic"))
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
@@ -215,7 +215,7 @@ def plot_diagnostics(results: List[Dict[str, Any]], run_dir: str | Path) -> None
     ax.plot(iterations, np.nanmean(value_test_loss_mat, axis=0), linewidth=2, label="Value test loss")
     ax.set_xlabel("Training iteration")
     ax.set_ylabel("MSE loss")
-    ax.set_title("ESCHER History-Value Network Loss Diagnostic")
+    ax.set_title(format_plot_title("ESCHER History-Value Network Loss Diagnostic"))
     ax.grid(True)
     ax.legend()
     fig.tight_layout()

@@ -37,6 +37,7 @@ from escher_poker.experiment_utils import (  # noqa: E402
     json_safe,
     run_single_seed_variant,
 )
+from escher_poker.plotting import format_plot_title  # noqa: E402
 
 from .config import (  # noqa: E402
     DEFAULT_CONFIG,
@@ -162,7 +163,7 @@ def _plot_final_exploitability(run_dir: Path, summary_rows: List[Dict]) -> None:
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=35, ha="right")
     ax.set_ylabel("Exploitability (NashConv / 2)")
-    ax.set_title("ESCHER network-size sweep: final exploitability")
+    ax.set_title(format_plot_title("ESCHER network-size sweep: final exploitability"))
     ax.legend()
     fig.tight_layout()
     fig.savefig(run_dir / "final_exploitability_by_variant.png", dpi=200, bbox_inches="tight")
@@ -196,7 +197,7 @@ def _plot_curves(run_dir: Path, curve_rows: List[Dict]) -> None:
     )
     ax.set_xlabel("Training iteration")
     ax.set_ylabel("Exploitability (NashConv / 2)")
-    ax.set_title("Intermediate exploitability checkpoints")
+    ax.set_title(format_plot_title("Intermediate exploitability checkpoints"))
     ax.legend(fontsize=8)
     fig.tight_layout()
     fig.savefig(run_dir / "intermediate_exploitability_by_iteration.png", dpi=200, bbox_inches="tight")
@@ -222,7 +223,7 @@ def _plot_curves(run_dir: Path, curve_rows: List[Dict]) -> None:
     )
     ax.set_xlabel("Training iteration")
     ax.set_ylabel("Average policy value")
-    ax.set_title("Intermediate average-policy value checkpoints")
+    ax.set_title(format_plot_title("Intermediate average-policy value checkpoints"))
     ax.legend(fontsize=8)
     fig.tight_layout()
     fig.savefig(run_dir / "average_policy_value_by_iteration.png", dpi=200, bbox_inches="tight")

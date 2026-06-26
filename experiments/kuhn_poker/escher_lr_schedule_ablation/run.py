@@ -49,6 +49,7 @@ from escher_poker.experiment_utils import (  # noqa: E402
     safe_stats,
     to_float,
 )
+from escher_poker.plotting import format_plot_title  # noqa: E402
 from escher_poker.seeding import set_seed_tf  # noqa: E402
 
 from .config import (  # noqa: E402
@@ -533,7 +534,7 @@ def _plot_curve_by_schedule(
         )
     ax.set_xlabel(x_col.replace("_", " ").title())
     ax.set_ylabel(ylabel)
-    ax.set_title(title)
+    ax.set_title(format_plot_title(title))
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()
@@ -586,7 +587,7 @@ def _plot_summary_bars(
         )
         ax.legend()
     ax.set_ylabel(ylabel)
-    ax.set_title(title)
+    ax.set_title(format_plot_title(title))
     ax.grid(True, axis="y", alpha=0.3)
     ax.tick_params(axis="x", rotation=20)
     fig.tight_layout()
@@ -618,7 +619,7 @@ def _plot_paired_bars(
     ax.bar(labels, means, yerr=errors, capsize=4)
     ax.axhline(0.0, linewidth=1, linestyle="--")
     ax.set_ylabel(ylabel)
-    ax.set_title(title)
+    ax.set_title(format_plot_title(title))
     ax.grid(True, axis="y", alpha=0.3)
     ax.tick_params(axis="x", rotation=20)
     fig.tight_layout()
@@ -652,7 +653,7 @@ def _plot_outputs(
         )
     ax.set_xlabel("Training iteration")
     ax.set_ylabel("Learning rate")
-    ax.set_title("ESCHER learning-rate schedules")
+    ax.set_title(format_plot_title("ESCHER learning-rate schedules"))
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()

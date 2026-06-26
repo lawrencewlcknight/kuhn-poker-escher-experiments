@@ -48,6 +48,7 @@ from escher_poker.experiment_utils import (  # noqa: E402
     safe_stats,
     to_float,
 )
+from escher_poker.plotting import format_plot_title  # noqa: E402
 from escher_poker.policy_snapshots import (  # noqa: E402
     load_full_solver_checkpoint,
     save_full_solver_checkpoint,
@@ -647,7 +648,7 @@ def _plot_arm_curves(
         )
     ax.set_xlabel(x_col.replace("_", " ").title())
     ax.set_ylabel(ylabel)
-    ax.set_title(title)
+    ax.set_title(format_plot_title(title))
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()
@@ -701,7 +702,7 @@ def _plot_paired_curves(
     )
     ax.set_xlabel("Training iteration")
     ax.set_ylabel("Warm-start exploitability - baseline exploitability")
-    ax.set_title("ESCHER warm-start ablation: paired exploitability difference")
+    ax.set_title(format_plot_title("ESCHER warm-start ablation: paired exploitability difference"))
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()
@@ -732,7 +733,7 @@ def _plot_paired_summary(paired_rows: List[Dict[str, Any]], run_dir: Path) -> No
     )
     ax.axhline(0.0, linestyle="--", linewidth=1)
     ax.set_ylabel("Warm-start - baseline")
-    ax.set_title("ESCHER warm-start ablation: mean paired differences")
+    ax.set_title(format_plot_title("ESCHER warm-start ablation: mean paired differences"))
     ax.grid(True, axis="y", alpha=0.3)
     fig.tight_layout()
     fig.savefig(

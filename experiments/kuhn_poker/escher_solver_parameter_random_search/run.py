@@ -34,6 +34,7 @@ from escher_poker.constants import (  # noqa: E402
     NASH_EXPLOITABILITY_TARGET_LABEL,
 )
 from escher_poker.experiment_utils import create_run_dir, json_safe  # noqa: E402
+from escher_poker.plotting import format_plot_title  # noqa: E402
 from escher_poker.hyperparameter_search import (  # noqa: E402
     aggregate_summaries,
     paired_differences_vs_baseline,
@@ -306,7 +307,7 @@ def _plot_stage_curves(results: List[Dict[str, Any]], stage_name: str, run_dir: 
     )
     ax.set_xlabel("Training iteration")
     ax.set_ylabel("Exploitability (NashConv/2)")
-    ax.set_title(f"ESCHER Solver-Parameter Random Search: {stage_name.title()} Exploitability")
+    ax.set_title(format_plot_title(f"ESCHER Solver-Parameter Random Search: {stage_name.title()} Exploitability"))
     ax.grid(True)
     ax.legend(fontsize=8)
     fig.tight_layout()
@@ -327,7 +328,7 @@ def _plot_stage_curves(results: List[Dict[str, Any]], stage_name: str, run_dir: 
     )
     ax.set_xlabel("Nodes touched")
     ax.set_ylabel("Exploitability (NashConv/2)")
-    ax.set_title(f"ESCHER Solver-Parameter Random Search: {stage_name.title()} Exploitability by Nodes")
+    ax.set_title(format_plot_title(f"ESCHER Solver-Parameter Random Search: {stage_name.title()} Exploitability by Nodes"))
     ax.grid(True)
     ax.legend(fontsize=8)
     fig.tight_layout()
@@ -349,7 +350,7 @@ def _plot_stage_curves(results: List[Dict[str, Any]], stage_name: str, run_dir: 
     )
     ax.set_xlabel("Training iteration")
     ax.set_ylabel("Average policy value")
-    ax.set_title(f"ESCHER Solver-Parameter Random Search: {stage_name.title()} Average Policy Value")
+    ax.set_title(format_plot_title(f"ESCHER Solver-Parameter Random Search: {stage_name.title()} Average Policy Value"))
     ax.grid(True)
     ax.legend(fontsize=8)
     fig.tight_layout()
@@ -370,7 +371,7 @@ def _plot_stage_curves(results: List[Dict[str, Any]], stage_name: str, run_dir: 
     )
     ax.set_xlabel("Nodes touched")
     ax.set_ylabel("Average policy value")
-    ax.set_title(f"ESCHER Solver-Parameter Random Search: {stage_name.title()} Average Policy Value by Nodes")
+    ax.set_title(format_plot_title(f"ESCHER Solver-Parameter Random Search: {stage_name.title()} Average Policy Value by Nodes"))
     ax.grid(True)
     ax.legend(fontsize=8)
     fig.tight_layout()
@@ -413,7 +414,7 @@ def _plot_final_metric_bars(
         ax.legend(fontsize=8)
     ax.set_ylabel(ylabel)
     ax.set_xlabel("Variant")
-    ax.set_title(f"ESCHER Solver-Parameter Random Search: {stage_name.title()} {ylabel}")
+    ax.set_title(format_plot_title(f"ESCHER Solver-Parameter Random Search: {stage_name.title()} {ylabel}"))
     ax.grid(True, axis="y")
     ax.tick_params(axis="x", rotation=45)
     fig.tight_layout()
@@ -447,7 +448,7 @@ def _plot_paired_delta(paired_rows: List[Dict[str, Any]], run_dir: Path) -> None
     ax.set_xticks(positions)
     ax.set_xticklabels(variant_ids, rotation=45, ha="right")
     ax.set_ylabel("Delta final exploitability vs baseline")
-    ax.set_title("ESCHER Solver-Parameter Random Search: Confirmation Paired Deltas")
+    ax.set_title(format_plot_title("ESCHER Solver-Parameter Random Search: Confirmation Paired Deltas"))
     ax.grid(True, axis="y")
     fig.tight_layout()
     fig.savefig(run_dir / "confirmation_paired_delta_final_exploitability.png", dpi=200, bbox_inches="tight")
@@ -495,7 +496,7 @@ def _plot_confirmation_diagnostics(
             continue
         ax.set_xlabel("Training iteration")
         ax.set_ylabel(ylabel)
-        ax.set_title(f"ESCHER Solver-Parameter Random Search: {ylabel}")
+        ax.set_title(format_plot_title(f"ESCHER Solver-Parameter Random Search: {ylabel}"))
         ax.grid(True)
         ax.legend(fontsize=8)
         fig.tight_layout()
